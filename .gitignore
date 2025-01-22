@@ -1,0 +1,117 @@
+# 環境設定
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 仮想環境
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# IDE設定
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ログとキャッシュ
+logs/
+*.log
+cache/
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# アプリケーション固有
+data/tasks.json
+history/
+.history/
+
+# システム固有
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 一時ファイル
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# 依存関係
+node_modules/
+jspm_packages/
+
+# デバッグ
+.debug/
+debug.log
+
+# APIキー関連
+*.pem
+*.key
+*.cert
+*.crt
+
+# データベース
+*.db
+*.sqlite
+*.sqlite3
+
+# バイナリファイル
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 出力ディレクトリ
+out/
+output/
+dist/
+build/
+
+# テスト関連
+.tox/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+
+# ドキュメント生成
+docs/_build/
+doc/build/
+
+# プロファイリング
+prof/
+*.prof
+
+# その他
+*.pid
+*.seed
+*.pid.lock 
