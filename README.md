@@ -42,7 +42,7 @@
 
 1. リポジトリをクローン:
 ```bash
-git clone https://github.com/yourusername/ai-desktop-agent.git
+git clone https://github.com/zapabob/ai-desktop-agent.git
 cd ai-desktop-agent
 ```
 
@@ -151,4 +151,4 @@ MITライセンス
 
 ## 作者
 
-Your Name 
+Ryo Minegishi
