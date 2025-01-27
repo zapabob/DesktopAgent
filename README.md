@@ -1,154 +1,104 @@
-# AI Desktop Agent
+# 自律型AIデスクトップエージェント
 
-デスクトップとブラウザの操作を自動化するAIエージェントです。
+自己強化学習と自己修復機能を備えた自律型デスクトップ操作AIエージェント
 
-## 機能
+## 主な機能
 
-- デスクトップ操作の自動化
-  - マウス・キーボード制御
-  - ウィンドウ管理
-  - スクリーンショット
-  - システムメトリクス取得
+### 1. キーボード操作
+- テキスト入力
+- キー押下
+- ホットキー実行
 
-- ブラウザ操作の自動化
-  - Edge/Chromeブラウザの制御
-  - ドキュメント検索
-  - コードスニペット抽出
-  - APIリファレンス検索
-  - 検索履歴管理
+### 2. マウス操作
+- クリック（左/右/ダブル）
+- カーソル移動
+- ドラッグ＆ドロップ
+- スクロール
 
-- タスク管理
-  - タスクの作成・更新・削除
-  - 優先度・ステータス管理
-  - タスク実行結果の追跡
+### 3. ブラウザ操作
+- URL操作
+- 要素クリック
+- フォーム入力
+- スクロール
+- ヘッドレスモード対応
 
-## 必要要件
+### 4. ファイル操作
+- ファイル作成/削除
+- コピー/移動
+- 読み込み/書き込み
+- ディレクトリ管理
 
-- Python 3.8以上
-- Edge WebDriver または Chrome WebDriver
-- 必要なPythonパッケージ:
-  ```
-  selenium
-  webdriver-manager
-  pyautogui
-  keyboard
-  mouse
-  psutil
-  pywin32
-  PyQt6
-  ```
+### 5. 自己学習・進化機能
+- タスク実行の学習
+- スキル獲得
+- エラー検知と自己修復
 
 ## インストール
 
-1. リポジトリをクローン:
 ```bash
-git clone https://github.com/zapabob/ai-desktop-agent.git
-cd ai-desktop-agent
-```
-
-2. 仮想環境を作成して有効化:
-```bash
+# 仮想環境の作成と有効化
 python -m venv venv
-.\venv\Scripts\activate  # Windows
-source venv/bin/activate  # Linux/Mac
-```
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
-3. 依存パッケージをインストール:
-```bash
+# 依存パッケージのインストール
 pip install -r requirements.txt
-```
-
-4. 環境変数の設定:
-```bash
-cp .env.example .env
-# .envファイルを編集してAPIキーなどを設定
-```
-
-## ブラウザの設定
-
-使用するブラウザは環境変数で指定できます：
-
-```bash
-# .envファイル
-BROWSER_TYPE=edge  # または "chrome"
-BROWSER_HEADLESS=true  # ヘッドレスモードの有効/無効
-BROWSER_TIMEOUT=10  # タイムアウト時間（秒）
 ```
 
 ## 使用方法
 
-1. アプリケーションを起動:
+### GUIアプリケーションとして実行
+
 ```bash
-python -m ai_orchestration
+# プロジェクトのルートディレクトリから実行
+python src/main.py
 ```
 
-2. GUIが起動し、以下の操作が可能になります:
-   - タスクの作成・管理
-   - デスクトップ操作の自動化
-   - ブラウザ操作の自動化
+メインウィンドウが起動し、GUIを通じてエージェントを操作できます。
 
-## テスト実行
+### プログラムから利用
 
-1. 単体テストの実行:
-```bash
-pytest
+```python
+from agent.core import AutoAgent
+
+# エージェントの初期化
+agent = AutoAgent()
+
+# タスク例
+agent.execute_task("type 'こんにちは、世界！'")
+agent.execute_task("click button#submit")
+agent.execute_task("browse https://example.com")
+agent.execute_task("create test.txt")
 ```
 
-2. カバレッジレポートの生成:
-```bash
-pytest --cov=ai_orchestration --cov-report=html
-```
+## エントリーポイント (main.py)
 
-3. 特定のブラウザのテストのみ実行:
-```bash
-pytest ai_orchestration/tests/test_browser_controller.py -k "chrome"
-pytest ai_orchestration/tests/test_browser_controller.py -k "edge"
-```
+アプリケーションのエントリーポイントでは以下の初期化が行われます：
 
-## プロジェクト構成
+1. DPIスケーリングの設定
+2. ログ設定（標準出力とファイル出力）
+3. データベースの初期化
+4. 自律エージェントとコマンドインタープリタの初期化
+5. メインウィンドウの作成と表示
 
-```
-ai_orchestration/
-├── __init__.py
-├── __main__.py
-├── config/
-│   ├── __init__.py
-│   └── config.py
-├── core/
-│   ├── __init__.py
-│   ├── desktop_controller.py
-│   ├── browser_controller.py
-│   └── task_manager.py
-├── gui/
-│   ├── __init__.py
-│   └── main_window.py
-├── models/
-│   ├── __init__.py
-│   └── task.py
-├── tests/
-│   ├── __init__.py
-│   ├── test_browser_controller.py
-│   ├── test_desktop_controller.py
-│   └── test_task_manager.py
-└── utils/
-    ├── __init__.py
-    └── error_handler.py
-```
+## 設定
 
-## エラーハンドリング
+- `config.json`: エージェントの基本設定
+- 環境変数:
+  - `BROWSER_HEADLESS`: ブラウザのヘッドレスモード（true/false）
 
-アプリケーションは以下のエラーハンドリング機能を提供します：
+## 開発環境
 
-- カスタムエラークラス
-- エラーログの自動記録
-- リトライメカニズム
-- 入力バリデーション
-- 安全な操作のためのデコレータ
+- Python 3.8以上
+- Windows/Mac/Linux対応
+- 必要なパッケージ:
+  - PyQt6
+  - keyboard
+  - pyautogui
+  - selenium
+  - python-dotenv
 
 ## ライセンス
 
 MITライセンス
-
-## 作者
 
 Ryo Minegishi
