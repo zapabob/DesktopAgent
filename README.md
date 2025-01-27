@@ -129,7 +129,7 @@ if __name__ == '__main__':
 
 ## ライセンス
 
-MITライセンス
+Apache2.0ライセンス
 
 作者
 Ryo Minegishi
