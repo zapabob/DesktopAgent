@@ -1,7 +1,8 @@
-# 環境設定
-.env
-.env.*
-!.env.example
+out
+dist
+node_modules
+.vscode-test/
+*.vsix
 
 # Python
 __pycache__/
@@ -25,93 +26,24 @@ wheels/
 .installed.cfg
 *.egg
 
-# 仮想環境
+# Virtual Environment
 venv/
 env/
 ENV/
-.venv/
-.env/
 
-# IDE設定
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-*~
 
-# ログとキャッシュ
-logs/
+# Project specific
+data/
+*.db
 *.log
-cache/
-.cache/
-.pytest_cache/
-.coverage
-htmlcov/
+api_key.txt
+.env
 
-# アプリケーション固有
-data/tasks.json
-history/
-.history/
-
-# システム固有
+# OS
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# 一時ファイル
-*.tmp
-*.bak
-*.swp
-*.swo
-
-# 依存関係
-node_modules/
-jspm_packages/
-
-# デバッグ
-.debug/
-debug.log
-
-# APIキー関連
-*.pem
-*.key
-*.cert
-*.crt
-
-# データベース
-*.db
-*.sqlite
-*.sqlite3
-
-# バイナリファイル
-*.exe
-*.dll
-*.so
-*.dylib
-
-# 出力ディレクトリ
-out/
-output/
-dist/
-build/
-
-# テスト関連
-.tox/
-.coverage
-.coverage.*
-coverage.xml
-*.cover
-.hypothesis/
-
-# ドキュメント生成
-docs/_build/
-doc/build/
-
-# プロファイリング
-prof/
-*.prof
-
-# その他
-*.pid
-*.seed
-*.pid.lock 

@@ -46,17 +46,6 @@ pip install -r requirements.txt
 
 ## 使用方法
 
-### GUIアプリケーションとして実行
-
-```bash
-# プロジェクトのルートディレクトリから実行
-python src/main.py
-```
-
-メインウィンドウが起動し、GUIを通じてエージェントを操作できます。
-
-### プログラムから利用
-
 ```python
 from agent.core import AutoAgent
 
@@ -70,16 +59,6 @@ agent.execute_task("browse https://example.com")
 agent.execute_task("create test.txt")
 ```
 
-## エントリーポイント (main.py)
-
-アプリケーションのエントリーポイントでは以下の初期化が行われます：
-
-1. DPIスケーリングの設定
-2. ログ設定（標準出力とファイル出力）
-3. データベースの初期化
-4. 自律エージェントとコマンドインタープリタの初期化
-5. メインウィンドウの作成と表示
-
 ## 設定
 
 - `config.json`: エージェントの基本設定
@@ -91,7 +70,6 @@ agent.execute_task("create test.txt")
 - Python 3.8以上
 - Windows/Mac/Linux対応
 - 必要なパッケージ:
-  - PyQt6
   - keyboard
   - pyautogui
   - selenium
@@ -100,5 +78,3 @@ agent.execute_task("create test.txt")
 ## ライセンス
 
 MITライセンス
-
-Ryo Minegishi
