@@ -46,6 +46,16 @@ pip install -r requirements.txt
 
 ## 使用方法
 
+### コマンドライン実行
+```bash
+# 基本実行
+python main.py
+
+# オプション付き実行
+python main.py --config config.json --headless true
+```
+
+### プログラムからの利用
 ```python
 from agent.core import AutoAgent
 
@@ -57,6 +67,48 @@ agent.execute_task("type 'こんにちは、世界！'")
 agent.execute_task("click button#submit")
 agent.execute_task("browse https://example.com")
 agent.execute_task("create test.txt")
+```
+
+### メインスクリプト (main.py)
+```python
+import argparse
+import json
+import os
+from agent.core import AutoAgent
+
+def main():
+    # コマンドライン引数の解析
+    parser = argparse.ArgumentParser(description='自律型AIデスクトップエージェント')
+    parser.add_argument('--config', type=str, help='設定ファイルのパス')
+    parser.add_argument('--headless', type=str, help='ブラウザのヘッドレスモード (true/false)')
+    args = parser.parse_args()
+
+    # 環境変数の設定
+    if args.headless:
+        os.environ['BROWSER_HEADLESS'] = args.headless
+
+    # エージェントの初期化
+    agent = AutoAgent(config_path=args.config)
+
+    try:
+        # ここにメインのタスク実行ロジックを記述
+        while True:
+            task = input("実行するタスクを入力してください（終了は 'exit'）: ")
+            if task.lower() == 'exit':
+                break
+            
+            result = agent.execute_task(task)
+            print(f"実行結果: {'成功' if result else '失敗'}")
+
+    except KeyboardInterrupt:
+        print("\nプログラムを終了します")
+    finally:
+        # ブラウザなどのリソースをクリーンアップ
+        if 'browser' in agent.controllers:
+            agent.controllers['browser'].close()
+
+if __name__ == '__main__':
+    main()
 ```
 
 ## 設定
@@ -78,3 +130,6 @@ agent.execute_task("create test.txt")
 ## ライセンス
 
 MITライセンス
+
+作者
+Ryo Minegishi
