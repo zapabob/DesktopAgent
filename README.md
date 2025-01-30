@@ -1,135 +1,144 @@
-# 自律型AIデスクトップエージェント
+# デスクトップエージェント
 
-自己強化学習と自己修復機能を備えた自律型デスクトップ操作AIエージェント
+マルチモーダルな自律型AIエージェントシステム。複数のAIエージェントが協調して動作し、デスクトップ操作の自動化と支援を行います。
+
+## Features
+- Autonomous Agent Management
+- Real-time System Monitoring
+- Cross-platform GUI Interface
 
 ## 主な機能
 
-### 1. キーボード操作
-- テキスト入力
-- キー押下
-- ホットキー実行
+### マルチエージェントシステム
+- 複数の子エージェントによる並行処理
+- エージェント間の自律的な通信と協調
+- リソース使用の最適化と負荷分散
 
-### 2. マウス操作
-- クリック（左/右/ダブル）
-- カーソル移動
-- ドラッグ＆ドロップ
-- スクロール
+### 学習機能
+- Transformerベースの行動学習
+- マウス操作とボタン入力の予測
+- RAGによるコンテキスト理解
 
-### 3. ブラウザ操作
-- URL操作
-- 要素クリック
-- フォーム入力
-- スクロール
-- ヘッドレスモード対応
+### AIモデル統合
+- Google AI Studio（デフォルト）
+- OpenAI（オプション）
+- Anthropic（オプション）
+- 自動フォールバックとロードバランシング
 
-### 4. ファイル操作
-- ファイル作成/削除
-- コピー/移動
-- 読み込み/書き込み
-- ディレクトリ管理
+### データ管理
+- SQLiteによる永続化
+- セキュアなデータ保存
+- 構造化されたログ管理
 
-### 5. 自己学習・進化機能
-- タスク実行の学習
-- スキル獲得
-- エラー検知と自己修復
+## 必要要件
 
-## インストール
+- Python 3.10以上
+- CUDA対応GPU（推奨）
+- 必要なPythonパッケージ:
+  - PyQt6
+  - torch
+  - numpy
+  - langchain
+  - その他（requirements.txtを参照）
 
+## インストール & クイックスタート
+
+1. リポジトリのクローンと依存関係インストール:
 ```bash
-# 仮想環境の作成と有効化
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 依存パッケージのインストール
-pip install -r requirements.txt
+git clone https://github.com/yourusername/desktop-agent.git
+cd desktop-agent
+python -m pip install -r requirements.txt
 ```
 
-## 使用方法
-
-### コマンドライン実行
+2. 設定ファイルの作成:
 ```bash
-# 基本実行
-python main.py
-
-# オプション付き実行
-python main.py --config config.json --headless true
+cp config.example.yaml config.yaml
+# 使用するAIプロバイダーのAPIキーを設定
 ```
 
-### プログラムからの利用
-```python
-from agent.core import AutoAgent
-
-# エージェントの初期化
-agent = AutoAgent()
-
-# タスク例
-agent.execute_task("type 'こんにちは、世界！'")
-agent.execute_task("click button#submit")
-agent.execute_task("browse https://example.com")
-agent.execute_task("create test.txt")
-```
-
-### メインスクリプト (main.py)
-```python
-import argparse
-import json
-import os
-from agent.core import AutoAgent
-
-def main():
-    # コマンドライン引数の解析
-    parser = argparse.ArgumentParser(description='自律型AIデスクトップエージェント')
-    parser.add_argument('--config', type=str, help='設定ファイルのパス')
-    parser.add_argument('--headless', type=str, help='ブラウザのヘッドレスモード (true/false)')
-    args = parser.parse_args()
-
-    # 環境変数の設定
-    if args.headless:
-        os.environ['BROWSER_HEADLESS'] = args.headless
-
-    # エージェントの初期化
-    agent = AutoAgent(config_path=args.config)
-
-    try:
-        # ここにメインのタスク実行ロジックを記述
-        while True:
-            task = input("実行するタスクを入力してください（終了は 'exit'）: ")
-            if task.lower() == 'exit':
-                break
-            
-            result = agent.execute_task(task)
-            print(f"実行結果: {'成功' if result else '失敗'}")
-
-    except KeyboardInterrupt:
-        print("\nプログラムを終了します")
-    finally:
-        # ブラウザなどのリソースをクリーンアップ
-        if 'browser' in agent.controllers:
-            agent.controllers['browser'].close()
-
-if __name__ == '__main__':
-    main()
+3. アプリケーションの実行:
+```bash
+python src/main.py
 ```
 
 ## 設定
 
-- `config.json`: エージェントの基本設定
-- 環境変数:
-  - `BROWSER_HEADLESS`: ブラウザのヘッドレスモード（true/false）
+### AIプロバイダーの設定
+`config.yaml`で使用するAIプロバイダーを設定できます：
 
-## 開発環境
+```yaml
+ai_providers:
+  use_vertexai: true  # Google AI Studio
+  use_openai: false   # OpenAI (オプション)
+  use_anthropic: false # Anthropic (オプション)
+```
 
-- Python 3.8以上
-- Windows/Mac/Linux対応
-- 必要なパッケージ:
-  - keyboard
-  - pyautogui
-  - selenium
-  - python-dotenv
+### システム設定
+```yaml
+system_settings:
+  cpu_threshold: 80   # CPU使用率の閾値
+  memory_threshold: 85 # メモリ使用率の閾値
+```
+
+## 使用方法
+
+1. アプリケーションの起動:
+   - `start.bat`をダブルクリック
+   - または、コマンドラインで`start.bat`を実行
+
+2. メインウィンドウの操作:
+   - エージェントの状態監視
+   - タスクの割り当て
+   - メトリクスの確認
+
+3. エージェントの管理:
+   - 新規エージェントの追加
+   - 既存エージェントの一時停止/再開
+   - タスクの優先順位付け
+
+## 開発者ガイド
+
+### プロジェクト構造
+```
+src/
+├── DesktopAgent/
+│   ├── agent/         # エージェント関連
+│   ├── ai/            # AIモデル管理
+│   ├── database/      # データベース
+│   ├── gui/           # GUI
+│   ├── models/        # 機械学習モデル
+│   ├── monitoring/    # システム監視
+│   └── rag/           # RAG実装
+├── main.py            # エントリーポイント
+└── config.yaml        # 設定ファイル
+```
+
+### 拡張方法
+1. 新しいエージェントの追加:
+   - `agent/`ディレクトリに新しいエージェントクラスを作成
+   - `ChildAgent`クラスを継承
+
+2. 新しいAIモデルの追加:
+   - `ai/model_manager.py`にプロバイダーを追加
+   - 必要なインターフェースを実装
 
 ## ライセンス
 
-Apache2.0ライセンス
+Apache2.0 License
 
-作者
-Ryo Minegishi
+## 貢献
+
+1. Forkを作成
+2. 機能ブランチを作成
+3. 変更をコミット
+4. ブランチをPush
+5. Pull Requestを作成
+
+## サポート
+
+問題が発生した場合は、以下を確認してください：
+1. ログファイル（`logs/`ディレクトリ）
+2. システムリソースの使用状況
+3. AIプロバイダーの設定
+
+詳細なトラブルシューティングは[Wiki](https://github.com/zapabob/DesktopAgent/wiki)を参照してください。
