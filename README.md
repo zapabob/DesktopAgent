@@ -45,8 +45,8 @@
 
 1. リポジトリのクローンと依存関係インストール:
 ```bash
-git clone https://github.com/yourusername/desktop-agent.git
-cd desktop-agent
+git clone https://github.com/zapabob/DesktopAgent.git
+cd DesktopAgent
 python -m pip install -r requirements.txt
 ```
 
