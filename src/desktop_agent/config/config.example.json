@@ -1,0 +1,27 @@
+{
+    "permissions_db_path": "data/permissions.db",
+    "allowed_directories": [
+        "~/Documents",
+        "~/Downloads"
+    ],
+    "allowed_protocols": ["http", "https"],
+    "allowed_domains": [
+        "github.com",
+        "google.com"
+    ],
+    "allowed_applications": [
+        "notepad.exe",
+        "calc.exe"
+    ],
+    "cpu_threshold": 90,
+    "memory_threshold": 90,
+    "rate_limit": {
+        "requests": 100,
+        "period": 60
+    },
+    "api_keys": {
+        "openai": "your-openai-api-key",
+        "anthropic": "your-anthropic-api-key",
+        "google": "your-google-api-key"
+    }
+} 
