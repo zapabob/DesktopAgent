@@ -1,88 +1,57 @@
 # -*- coding: utf-8 -*-
-import os
-import sys
-import asyncio
-import traceback
-from pathlib import Path
 import logging
-
-# プロジェクトルートをPYTHONPATHに追加
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root.parent))
-
+import sys
+from pathlib import Path
 from PyQt6.QtWidgets import QApplication
-from desktop_agent.config import Config
-from desktop_agent.agent.agent_manager import AutonomousAgentManager
-from desktop_agent.gui.main_window import MainWindow
-from desktop_agent.langchain_integration import LangChainManager
-from desktop_agent.database.init_db import init_database
+from PyQt6.QtCore import Qt
+from dotenv import load_dotenv  # 追加
 
-# メイン関数の先頭に環境変数設定を追加
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-os.environ['TF_CPP_MIN_VLOG_LEVEL'] = '0'  # 詳細ログ抑制
-os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # GPU使用を明示
-os.environ['PYTHONWARNINGS'] = 'ignore::UserWarning'
+# DPI設定を調整
+if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
+if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
 
-async def main():
-    try:
-        os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-        os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
-        os.environ['PYTHONWARNINGS'] = 'ignore::UserWarning'
-        
-        # データベースの初期化
-        db_session = init_database()
-        
-        # 設定の初期化
-        config = Config()
-        await config.load()
-        
-        # コンポーネントの初期化
-        agent_manager = AutonomousAgentManager(config, db_session)
-        langchain_manager = LangChainManager(config)
-        
-        # エージェントマネージャーの開始
-        await agent_manager.start()
-        
-        # Qtアプリケーションの作成
-        app = QApplication(sys.argv)
-        
-        # メインウィンドウの作成と表示
-        window = MainWindow(agent_manager, langchain_manager)
-        window.show()
-        
-        # イベントループの開始
-        exit_code = app.exec()
-        
-        # エージェントマネージャーの停止
-        await agent_manager.stop()
-        
-        # データベースセッションのクローズ
-        db_session.close()
-        
-        sys.exit(exit_code)
-        
-    except Exception as e:
-        print(f"エラー: {str(e)}")
-        print(f"トレースバック: {traceback.format_exc()}")
-        sys.exit(1)
+# ロギングの設定
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),  # 標準出力へのハンドラ
+        logging.FileHandler('app.log', encoding='utf-8')  # ファイルへのハンドラ（UTF-8指定）
+    ]
+)
 
-if __name__ == "__main__":
-    # ロギング設定
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('desktop_agent.log'),
-            logging.StreamHandler()
-        ]
-    )
+# プロジェクトルートとsrcディレクトリをPythonパスに追加
+project_root = Path(__file__).parent.parent
+src_path = project_root / 'src'
+sys.path.insert(0, str(src_path))
+
+# 必要なモジュールのインポート
+from gui.main_window import MainWindow
+from agent.autonomous_agent import AutonomousAgent
+from agent.command_interpreter import CommandInterpreter
+from db.models import DatabaseManager
+
+def main():
+    load_dotenv()  # .envの値を読み込む
+    # データベースの初期化
+    db_manager = DatabaseManager()
+    db_manager.initialize_database()
     
-    # Windows環境でのイベントループポリシーの設定
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    # アプリケーションの初期化
+    app = QApplication(sys.argv)
     
-    # メインループの実行
-    asyncio.run(main()) 
+    # エージェントとインタープリタの初期化
+    agent = AutonomousAgent(db_manager.get_logger())
+    interpreter = CommandInterpreter()
+    
+    # メインウィンドウの作成と表示
+    window = MainWindow(agent, interpreter)
+    window.show()
+    
+    # アプリケーションの実行
+    return app.exec()
+
+if __name__ == '__main__':
+    sys.exit(main())
