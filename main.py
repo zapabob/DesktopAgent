@@ -39,39 +39,43 @@ logger = logging.getLogger(__name__)
 logger.info("アプリケーションを起動しています...")
 
 # 必要なモジュールのインポート
-from gui.main_window import MainWindow
-from agent.autonomous_agent import AutonomousAgent
-from agent.command_interpreter import CommandInterpreter
-from db.models import DatabaseManager
-import wmi
+try:
+    from gui.main_window import MainWindow
+    from agent.autonomous_agent import AutonomousAgent
+    from agent.command_interpreter import CommandInterpreter
+    from db.models import DatabaseManager
+    import wmi
+except ImportError as e:
+    logger.error(f"モジュールのインポートに失敗しました: {e}")
+    sys.exit(1)
 
 def main():
-    # try:
-    # データベースの初期化
-    db_manager = DatabaseManager()
-    db_manager.initialize_database()
-    
-    # アプリケーションの初期化
-    app = QApplication(sys.argv)
-    
-    # エージェントとインタープリタの初期化
-    agent = AutonomousAgent(db_manager.get_logger())
-    interpreter = CommandInterpreter()
-    
-    # システム情報の初期化
-    system = wmi.WMI()
-    
-    # メインウィンドウの作成と表示
-    window = MainWindow(agent, interpreter, system)
-    window.show()
-    
-    logger.info("アプリケーションの準備が完了しました")
-    
-    # アプリケーションの実行
-    return app.exec()
-    # except Exception as e:
-    #     logger.error(f"アプリケーションの起動中にエラーが発生しました: {e}", exc_info=True)
-    #     return 1
+    try:
+        # データベースの初期化
+        db_manager = DatabaseManager()
+        db_manager.initialize_database()
+        
+        # アプリケーションの初期化
+        app = QApplication(sys.argv)
+        
+        # エージェントとインタープリタの初期化
+        agent = AutonomousAgent(db_manager.get_logger())
+        interpreter = CommandInterpreter()
+        
+        # システム情報の初期化
+        system = wmi.WMI()
+        
+        # メインウィンドウの作成と表示
+        window = MainWindow(agent, interpreter, system)
+        window.show()
+        
+        logger.info("アプリケーションの準備が完了しました")
+        
+        # アプリケーションの実行
+        return app.exec()
+    except Exception as e:
+        logger.error(f"アプリケーションの起動中にエラーが発生しました: {e}", exc_info=True)
+        return 1
 
 if __name__ == '__main__':
     sys.exit(main())

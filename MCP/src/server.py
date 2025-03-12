@@ -1,5 +1,13 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+MCPサーバー - モデルとブラウザの連携を提供するサーバー
+"""
+
 import os
+import sys
 import asyncio
+import signal
 import logging
 import json
 import time
@@ -11,6 +19,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
 # 内部モジュールのインポート
 try:
@@ -55,6 +64,10 @@ except ImportError:
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('mcp_server.log', encoding='utf-8')
+    ]
 )
 logger = logging.getLogger("mcp_server")
 
@@ -94,16 +107,30 @@ class ServerStatusResponse(BaseModel):
     browser: Dict[str, Any]
 
 # アプリケーションの作成
-app = FastAPI(title="MCP Server", description="Model Context Protocol Server", version="0.1.0")
+app = FastAPI(
+    title="MCP Server",
+    description="Model Context Protocol Server - 大規模言語モデルとブラウザの連携サービス",
+    version="0.1.0"
+)
 
 # CORSミドルウェアの追加
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 本番環境では特定のオリジンに制限すべき
+    allow_origins=["*"],  # 本番環境では適切に制限すること
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 環境変数の読み込み
+script_dir = Path(__file__).parent
+project_root = script_dir.parent
+env_path = project_root / '.env'
+
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    load_dotenv()  # デフォルトの.envを探す
 
 # グローバル変数
 model_manager = ModelManager()
@@ -149,7 +176,8 @@ async def shutdown_event():
 # ヘルスチェックエンドポイント
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    """サーバーの健全性を確認するエンドポイント"""
+    return {"status": "healthy", "message": "サーバーは正常に動作しています"}
 
 # サーバーステータスエンドポイント
 @app.get("/status", response_model=ServerStatusResponse)
@@ -312,11 +340,60 @@ async def browser_control(request: BrowserRequest):
         logger.error(f"ブラウザ制御エラー ({request.action}): {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# メインエントリーポイント
-if __name__ == "__main__":
-    # 環境変数から設定を取得
-    host = os.environ.get("MCP_HOST", "127.0.0.1")
-    port = int(os.environ.get("MCP_PORT", 8000))
+# シャットダウンエンドポイント
+@app.post("/shutdown")
+async def shutdown():
+    """サーバーを安全に停止するエンドポイント"""
+    logger.info("シャットダウンリクエストを受信しました")
+    # 非同期でサーバーを停止
+    asyncio.create_task(shutdown_server())
+    return {"status": "success", "message": "サーバーをシャットダウンしています"}
+
+async def shutdown_server():
+    """サーバーを安全に停止する"""
+    logger.info("サーバーリソースをクリーンアップしています...")
     
-    # サーバー起動
-    uvicorn.run("server:app", host=host, port=port, reload=True) 
+    # ブラウザコントローラーのクリーンアップ
+    if browser_controller:
+        await browser_controller.shutdown()
+    
+    # モデルマネージャーのクリーンアップ
+    if model_manager:
+        await model_manager.shutdown()
+    
+    # 少し待機してからプロセスを終了
+    await asyncio.sleep(1)
+    logger.info("サーバーを停止します")
+    os.kill(os.getpid(), signal.SIGTERM)
+
+# シグナルハンドラ
+def signal_handler(sig, frame):
+    """シグナルを受け取った時の処理"""
+    logger.info(f"シグナル {sig} を受信しました。アプリケーションを終了します。")
+    asyncio.run(shutdown_server())
+
+# 主要なシグナルをキャッチ
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+# サーバー起動
+def start_server():
+    """UvicornでFastAPIサーバーを起動"""
+    host = os.environ.get("MCP_HOST", "localhost")
+    port = int(os.environ.get("MCP_PORT", 8765))
+    
+    logger.info(f"MCPサーバーを起動しています: {host}:{port}")
+    
+    # 環境変数で指定されている場合はリロードを有効化
+    reload = os.environ.get("MCP_RELOAD", "").lower() == "true"
+    
+    uvicorn.run(
+        "server:app",
+        host=host,
+        port=port,
+        reload=reload,
+        log_level="info"
+    )
+
+if __name__ == "__main__":
+    start_server() 

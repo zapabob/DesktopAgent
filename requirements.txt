@@ -81,20 +81,29 @@ mediapipe>=0.10.9
 dlib>=19.24.2
 
 # Added from the code block
-PyQt6>=6.4.0
-PyQt6-WebEngine>=6.4.0
+PyQt6>=6.5.0
+PyQt6-WebEngine>=6.5.0
 python-dotenv>=1.0.0
-psutil>=5.9.0
-GPUtil>=1.4.0
-WMI>=1.5.1
-langchain>=0.1.0
-langchain-core>=0.1.0
-langchain-google-genai>=0.0.6
-opencv-python>=4.9.0
-keyboard>=0.13.5
+requests>=2.28.2
+langchain>=0.0.267
+langchain-core>=0.0.16
+langchain-openai>=0.0.2
+langchain-anthropic>=0.0.6
+langchain-google-genai>=0.0.3
+pydantic>=2.0.0
+openai>=1.0.0
+google-generativeai>=0.3.0
+anthropic>=0.5.0
 pyautogui>=0.9.54
-Pillow>=10.0.0
-pandas>=2.0.0
+psutil>=5.9.0
+wmi>=1.5.1
+keyboard>=0.13.5
+python-socketio>=5.8.0
+playwright>=1.35.0
+beautifulsoup4>=4.12.0
+opencv-python>=4.7.0
+pillow>=9.5.0
+plyer>=2.1.0
 
 # ブラウザ操作関連の依存関係
 playwright>=1.49.0
@@ -107,3 +116,23 @@ browser-use>=0.1.0
 # 音声認識関連
 SpeechRecognition==3.10.0
 pyaudio==0.2.13
+
+# データベース関連
+sqlalchemy>=2.0.0
+alembic>=1.11.1
+
+# ブラウザ操作関連
+selenium>=4.10.0
+webdriver-manager>=3.8.6
+undetected-chromedriver>=3.5.0
+
+# MCP関連
+fastapi>=0.104.1
+uvicorn>=0.24.0
+starlette>=0.27.0
+aiohttpx>=6.0.0
+jinja2>=3.1.2
+python-multipart>=0.0.6
+websockets>=11.0.3
+httpx>=0.25.0
+async-timeout>=4.0.3

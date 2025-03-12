@@ -1,4 +1,4 @@
 @echo off
-cd %~dp0
+echo デスクトップエージェントを起動しています...
 python src/main.py
 pause 

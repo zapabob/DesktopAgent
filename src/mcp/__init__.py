@@ -1,19 +1,18 @@
 """
-MCP (Model Context Protocol) モジュール
-
-このモジュールはDesktopAgentとMCPサーバーとの連携機能を提供します。
+MCPモジュール - Model Context Protocol
+MCPサーバーとの通信を管理するモジュール
 """
 
 import logging
 
-# モジュールのロガー設定
+# ロギングの設定
 logger = logging.getLogger(__name__)
+logger.info("MCPモジュールが初期化されました")
 
-# 主要なクラスのインポート
+# MCPアダプタークラスをインポート可能にする
 try:
     from .mcp_adapter import MCPAdapter
 except ImportError as e:
-    logger.warning(f"MCPAdapterのインポートに失敗しました: {e}")
-    MCPAdapter = None
+    logger.error(f"MCPアダプタのインポートに失敗しました: {e}")
 
 __all__ = ["MCPAdapter"] 
