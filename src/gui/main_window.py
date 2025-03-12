@@ -12,6 +12,7 @@ import psutil
 import GPUtil
 import wmi
 import threading
+import os
 
 class TaskDialog(QDialog):
     def __init__(self, parent=None):
@@ -87,6 +88,11 @@ class MainWindow(QMainWindow):
         """UIの初期化"""
         self.setWindowTitle('デスクトップエージェント')
         self.setGeometry(100, 100, 1000, 700)
+        
+        # 時計ラベルの作成
+        self.clock_label = QLabel()
+        self.clock_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.clock_label.setStyleSheet("font-size: 14pt; font-weight: bold;")
         
         self.create_tabs()
         
@@ -422,7 +428,16 @@ class MainWindow(QMainWindow):
 
     def setup_system_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(QIcon("icon.png"))
+        
+        # アイコンファイルの存在チェック
+        icon_path = "icon.png"
+        if os.path.exists(icon_path):
+            self.tray_icon.setIcon(QIcon(icon_path))
+        else:
+            # アイコンがない場合はデフォルトアイコンを使用
+            self.logger.warning("アイコンファイルが見つかりません: " + icon_path)
+            # PyQt6のデフォルトアイコンを使用
+            self.tray_icon.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_ComputerIcon))
         
         tray_menu = QMenu()
         show_action = QAction("表示", self)
