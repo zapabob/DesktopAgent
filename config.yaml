@@ -1,0 +1,67 @@
+# AI Provider Settings
+ai_providers:
+  use_vertexai: true
+  use_openai: false
+  use_anthropic: false
+
+# System Settings
+system_settings:
+  cpu_threshold: 80
+  memory_threshold: 85
+  gpu_threshold: 80
+  log_level: INFO
+  metrics_update_interval: 1
+  resource_check_interval: 5
+
+# Hardware Monitoring
+hardware_monitoring:
+  enable_gpu_monitoring: true
+  enable_cpu_temp_monitoring: true
+  enable_network_monitoring: true
+  metrics_history_size: 100
+
+# Agent Settings
+agents:
+  - id: "main_agent"
+    role: "coordinator"
+    type: "autonomous"
+    model: "gemini-pro"
+    priority: 0
+    capabilities: ["task_distribution", "agent_coordination"]
+    max_tokens: 2000
+    temperature: 0.7
+    rate_limit:
+      requests: 60
+      period: 60
+    
+  - id: "task_agent"
+    role: "task_executor"
+    type: "worker"
+    priority: 1
+    capabilities: ["mouse_control", "keyboard_control"]
+    
+  - id: "monitor_agent"
+    role: "monitor"
+    type: "observer"
+    priority: 2
+    capabilities: ["system_monitoring", "resource_management"]
+
+# Database Settings
+database:
+  path: "desktop_agent.db"
+  backup_interval: 3600
+
+# Model Settings
+model:
+  input_dim: 8
+  hidden_dim: 256
+  num_layers: 4
+  num_heads: 8
+  dropout: 0.1
+  batch_size: 32
+  learning_rate: 0.001
+  max_epochs: 100
+
+browser_paths:
+  edge: 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+  chrome: 'C:\Program Files\Google\Chrome\Application\chrome.exe' 
