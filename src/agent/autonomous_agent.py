@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
@@ -88,42 +88,74 @@ class AutonomousAgent:
         # モデルが初期化されていない場合はエラーログ
         if self.llm is None:
             self.logger.error("有効なAIモデルが初期化されませんでした。APIキーを確認してください。")
-            
-        # 出力パーサーの設定
-        self.parser = JsonOutputParser()
-        
-        # プロンプトテンプレートの設定
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """あなたはデスクトップ操作を支援するAIアシスタントです。
-            ユーザーの要求を理解し、適切なコマンドに変換してください。
-            
-            出力は以下のJSON形式で返してください：
-            {
-                "command_type": "BROWSER|FILE|DESKTOP|MOUSE|KEYBOARD|VISION",
-                "parameters": {
-                    "action": "実行するアクション",
-                    "browser_type": "edge|chrome|browser",
-                    "url": "開くURL",
-                    "path": "ファイルパス",
-                    "window": "ウィンドウ名",
-                    "application": "アプリケーション名",
-                    "x": "X座標",
-                    "y": "Y座標",
-                    "clicks": "クリック回数",
-                    "button": "left|right|middle",
-                    "duration": "操作時間（秒）",
-                    "keys": "キー操作シーケンス",
-                    "speed": "再生速度",
-                    "screenshot": "スクリーンショットの有無",
-                    "region": "キャプチャ領域"
+            # 出力パーサーの設定だけはしておく
+            self.parser = JsonOutputParser()
+            self.prompt = ChatPromptTemplate.from_messages([
+                ("system", """あなたはデスクトップ操作を支援するAIアシスタントです。
+                ユーザーの要求を理解し、適切なコマンドに変換してください。
+                
+                出力は以下のJSON形式で返してください：
+                {
+                    "command_type": "BROWSER|FILE|DESKTOP|MOUSE|KEYBOARD|VISION",
+                    "parameters": {
+                        "action": "実行するアクション",
+                        "browser_type": "edge|chrome|browser",
+                        "url": "開くURL",
+                        "path": "ファイルパス",
+                        "window": "ウィンドウ名",
+                        "application": "アプリケーション名",
+                        "x": "X座標",
+                        "y": "Y座標",
+                        "clicks": "クリック回数",
+                        "button": "left|right|middle",
+                        "duration": "操作時間（秒）",
+                        "keys": "キー操作シーケンス",
+                        "speed": "再生速度",
+                        "screenshot": "スクリーンショットの有無",
+                        "region": "キャプチャ領域"
+                    }
                 }
-            }
-            """),
-            ("human", "{input}")
-        ])
-        
-        # チェーンの構築
-        self.chain = self.prompt | self.llm | self.parser
+                """),
+                ("human", "{input}")
+            ])
+            # APIキーがない場合はチェーンを構築しない
+            self.chain = None
+        else:
+            # 出力パーサーの設定
+            self.parser = JsonOutputParser()
+            
+            # プロンプトテンプレートの設定
+            self.prompt = ChatPromptTemplate.from_messages([
+                ("system", """あなたはデスクトップ操作を支援するAIアシスタントです。
+                ユーザーの要求を理解し、適切なコマンドに変換してください。
+                
+                出力は以下のJSON形式で返してください：
+                {
+                    "command_type": "BROWSER|FILE|DESKTOP|MOUSE|KEYBOARD|VISION",
+                    "parameters": {
+                        "action": "実行するアクション",
+                        "browser_type": "edge|chrome|browser",
+                        "url": "開くURL",
+                        "path": "ファイルパス",
+                        "window": "ウィンドウ名",
+                        "application": "アプリケーション名",
+                        "x": "X座標",
+                        "y": "Y座標",
+                        "clicks": "クリック回数",
+                        "button": "left|right|middle",
+                        "duration": "操作時間（秒）",
+                        "keys": "キー操作シーケンス",
+                        "speed": "再生速度",
+                        "screenshot": "スクリーンショットの有無",
+                        "region": "キャプチャ領域"
+                    }
+                }
+                """),
+                ("human", "{input}")
+            ])
+            
+            # チェーンの構築
+            self.chain = self.prompt | self.llm | self.parser
         
         # ブラウザパスの設定
         self.browser_paths = {
@@ -148,7 +180,8 @@ class AutonomousAgent:
                 status="RUNNING"
             )
             
-            # コマンドタイプに応じた処理
+            # コマンドタイプに応じた処理を実行
+            success = False
             if command_type == "BROWSER":
                 success = self._handle_browser_command(params)
             elif command_type == "FILE":
@@ -162,27 +195,61 @@ class AutonomousAgent:
             elif command_type == "VISION":
                 success = self._handle_vision_command(params)
             else:
-                raise ValueError(f"不明なコマンドタイプ: {command_type}")
-            
+                self.logger.warning(f"不明なコマンドタイプ: {command_type}")
+                
             # 実行結果をログに記録
-            status = "SUCCESS" if success else "FAILURE"
             self.db_logger.log_operation(
                 operation_type=command_type,
                 details=f"コマンド実行完了: {params}",
-                status=status
+                status="SUCCESS" if success else "FAILURE"
             )
             
             return success
             
         except Exception as e:
             self.logger.error(f"コマンド実行エラー: {e}")
+            
+            # エラーをログに記録
             self.db_logger.log_operation(
                 operation_type=command_type,
-                details=f"コマンド実行エラー: {params}",
-                status="ERROR",
+                details=f"コマンド実行エラー: {params}, {str(e)}",
+                status="FAILURE",
                 error_message=str(e)
             )
+            
             return False
+    
+    def process_natural_language(self, text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+        """
+        自然言語のテキストを処理し、コマンドタイプとパラメータを生成
+        
+        Args:
+            text (str): 処理する自然言語テキスト
+            
+        Returns:
+            Optional[Tuple[str, Dict[str, Any]]]: コマンドタイプとパラメータ、または解析できない場合はNone
+        """
+        try:
+            # LLMチェーンが利用可能な場合は自然言語処理を実行
+            if self.chain is not None:
+                result = self.chain.invoke({"input": text})
+                command_type = result.get("command_type")
+                parameters = result.get("parameters", {})
+                
+                if command_type:
+                    return command_type, parameters
+                
+            # LLMが利用できない場合は、CommandInterpreterを使用
+            result = self.command_interpreter.interpret(text)
+            if result:
+                return result
+                
+            self.logger.warning(f"自然言語を解析できませんでした: {text}")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"自然言語処理エラー: {e}")
+            return None
     
     def _handle_browser_command(self, params: Dict[str, Any]) -> bool:
         """ブラウザ操作コマンドの処理"""
