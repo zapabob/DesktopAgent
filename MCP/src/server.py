@@ -370,7 +370,16 @@ async def shutdown_server():
 def signal_handler(sig, frame):
     """シグナルを受け取った時の処理"""
     logger.info(f"シグナル {sig} を受信しました。アプリケーションを終了します。")
-    asyncio.run(shutdown_server())
+    # asyncio.run(shutdown_server()) # これはイベントループ内からの呼び出しでエラーになる
+    
+    # 現在のイベントループを取得して、そこにタスクをスケジュール
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        # イベントループが実行中の場合は、タスクとしてシャットダウン処理を追加
+        loop.create_task(shutdown_server())
+    else:
+        # イベントループが実行中でない場合（通常はここには来ない）
+        asyncio.run(shutdown_server())
 
 # 主要なシグナルをキャッチ
 signal.signal(signal.SIGINT, signal_handler)

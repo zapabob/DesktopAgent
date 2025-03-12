@@ -14,7 +14,7 @@ from langchain.tools import Tool
 from langchain.prompts import PromptTemplate
 from langchain_core.language_models.base import BaseLanguageModel
 from dotenv import load_dotenv
-from langchain_openai import OpenAI
+from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -85,42 +85,76 @@ class CommandInterpreter:
         """
         self.llm = llm
         
+        # モデルの設定
+        gemini_pro = os.environ.get("GOOGLE_API_KEY", "gemini-pro")
+        gpt_4omini = os.environ.get("OPENAI_API_KEY", "gpt-4omini")
+        claude_sonnet = os.environ.get("ANTHROPIC_API_KEY", "claude-sonnet")
+        
+        default_model = gemini_pro
+        fallback_model = [claude_sonnet, gpt_4omini]  # リストとして定義
+        
+        def get_model(model_name: str) -> BaseLanguageModel:
+            try:
+                if model_name == "gemini-pro":
+                    return ChatGoogleGenerativeAI(model_name="gemini-2.0-flash", google_api_key=os.environ.get("GOOGLE_API_KEY"))
+                elif model_name == "gpt-4omini":
+                    return ChatOpenAI(model="gpt-4omini", api_key=os.environ.get("OPENAI_API_KEY"))
+                elif model_name == "claude-sonnet":
+                    return ChatAnthropic(model="claude-3-5-sonnet-2024 ", api_key=os.environ.get("ANTHROPIC_API_KEY"))
+                else:
+                    logger.warning(f"不明なモデル名: {model_name}、代替モデルを使用します")
+                    # fallback_modelを使用
+                    for fallback in fallback_model:
+                        try:
+                            return get_model(fallback)
+                        except Exception as e:
+                            logger.warning(f"代替モデル {fallback} の初期化に失敗しました: {e}")
+                    raise ValueError(f"利用可能なモデルがありません")
+            except Exception as e:
+                logger.error(f"モデル初期化エラー: {e}")
+                raise
+        
+        # モデルの設定
+        self.llm = get_model(default_model)
+        
         # ツールの定義
         tools = [
             Tool(
                 name="navigate",
-                func=lambda url: self._tool_navigate(url),
+                func=lambda url: self.llm.invoke(self._tool_navigate(url)),
                 description="Webブラウザで指定されたURLに移動します。URLのみを引数として受け取ります。"
             ),
             Tool(
                 name="click",
-                func=lambda selector: self._tool_click(selector),
+                func=lambda selector: self.llm.invoke(self._tool_click(selector)),
                 description="指定されたセレクタの要素をクリックします。CSSセレクタのみを引数として受け取ります。"
             ),
             Tool(
                 name="type",
-                func=lambda selector_and_text: self._tool_type(selector_and_text),
+                func=lambda selector_and_text: self.llm.invoke(self._tool_type(selector_and_text)),
                 description="指定されたセレクタの要素にテキストを入力します。'selector:::text'の形式で引数を受け取ります。"
             ),
             Tool(
                 name="screenshot",
-                func=lambda: self._tool_screenshot(),
+                func=lambda: self.llm.invoke(self._tool_screenshot()),
                 description="現在のページのスクリーンショットを撮影します。引数は必要ありません。"
             ),
             Tool(
                 name="get_text",
-                func=lambda selector: self._tool_get_text(selector),
+                func=lambda selector: self.llm.invoke(self._tool_get_text(selector)),
                 description="指定されたセレクタの要素のテキストを取得します。CSSセレクタのみを引数として受け取ります。"
             ),
             Tool(
                 name="execute_js",
-                func=lambda code: self._tool_execute_js(code),
+                func=lambda code: self.llm.invoke(self._tool_execute_js(code)),
                 description="ブラウザでJavaScriptコードを実行します。JavaScriptコードのみを引数として受け取ります。"
             )
         ]
         
         # プロンプトテンプレートの定義
-        template = """あなたはブラウザを操作するAIアシスタントです。
+        
+        template = {
+            "system_prompt": """あなたはブラウザを操作するAIアシスタントです。
 与えられたタスクを実行するために、指定されたツールを使用してください。
 
 ツール:
@@ -136,6 +170,7 @@ class CommandInterpreter:
 答え: タスクの最終結果
 
 思考:"""
+        }
         
         prompt = PromptTemplate.from_template(template)
         

@@ -6,15 +6,19 @@ import uuid
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 import traceback
+import browser_use
 
-# browser-useのインポートを試行
+# ロギングの設定
+logger = logging.getLogger(__name__)
+
+# browser-useパッケージが利用可能かチェック
 try:
-    from browser_use import Browser
+    import browser_use as browser_use
     BROWSER_USE_AVAILABLE = True
+    logger.info("browser-useパッケージが見つかりました")
 except ImportError:
     BROWSER_USE_AVAILABLE = False
-
-logger = logging.getLogger("browser_controller")
+    logger.warning("browser-useパッケージが見つかりません。基本的なブラウザ機能のみが利用可能です。")
 
 class BrowserSession:
     """
@@ -48,7 +52,7 @@ class BrowserSession:
             asyncio.set_event_loop(self.loop)
             
             # Browserインスタンスを作成
-            self.browser = Browser()
+            self.browser = browser_use.Browser()
             
             # APIメソッドの存在を確認
             # navigate/open/gotoメソッドのいずれかを使用

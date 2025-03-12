@@ -1,214 +1,285 @@
 import os
 import logging
-import asyncio
-from typing import Dict, Any, List, Optional
-from dotenv import load_dotenv
+import json
 import google.generativeai as genai
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAI
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
+from typing import Dict, Any, List, Optional, Union
 
-# 環境変数の読み込み
-load_dotenv()
-
-logger = logging.getLogger("model_manager")
+# ロギングの設定
+logger = logging.getLogger(__name__)
 
 class ModelManager:
     """
-    AIモデルを管理するクラス。
-    複数のAIプロバイダー（Google AI, OpenAI, Anthropic）をサポートし、
-    モデルの初期化、生成リクエストの処理、使用状況の追跡を行います。
+    LLMモデルの管理と操作を行うクラス
     """
     
     def __init__(self):
+        """
+        ModelManagerを初期化します。
+        """
+        self.initialized = False
         self.models = {}
-        self.vision_models = {}
-        self.usage_stats = {}
-        self.google_models = ["gemini-pro", "gemini-pro-vision"]
-        self.openai_models = ["gpt-4", "gpt-3.5-turbo"]
-        self.anthropic_models = ["claude-3-opus", "claude-3-sonnet"]
+        self.default_model = None
+        self.usage_stats = {"requests": 0, "tokens": 0}
         
-    async def initialize(self) -> None:
-        """
-        利用可能なすべてのAIモデルを初期化します。
-        """
-        logger.info("モデルマネージャーの初期化を開始...")
+        # API キー
+        self.google_api_key = os.environ.get("GOOGLE_API_KEY")
+        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
+        self.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
         
-        # Google AI モデルの初期化
-        google_api_key = os.getenv("GOOGLE_API_KEY")
-        if google_api_key:
-            try:
-                genai.configure(api_key=google_api_key)
-                # テキスト用モデル
-                self.models["gemini-pro"] = ChatGoogleGenerativeAI(model="gemini-pro")
-                # マルチモーダル用モデル
-                self.vision_models["gemini-pro-vision"] = GoogleGenerativeAI(model="gemini-pro-vision")
-                logger.info("Google AI (Gemini Pro) モデルを初期化しました")
-            except Exception as e:
-                logger.error(f"Google AI初期化エラー: {e}")
-        else:
-            logger.warning("GOOGLE_API_KEYが設定されていません")
-        
-        # OpenAI APIモデルの初期化
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if openai_api_key:
-            try:
-                # テキスト用モデル（GPT-4をデフォルトに）
-                self.models["gpt-4"] = ChatOpenAI(api_key=openai_api_key, model_name="gpt-4")
-                self.models["gpt-3.5-turbo"] = ChatOpenAI(api_key=openai_api_key, model_name="gpt-3.5-turbo")
-                logger.info("OpenAI GPT-4/GPT-3.5モデルを初期化しました")
-            except Exception as e:
-                logger.error(f"OpenAI初期化エラー: {e}")
-        else:
-            logger.warning("OPENAI_API_KEYが設定されていません")
-        
-        # Anthropic Claude APIモデルの初期化
-        claude_api_key = os.getenv("CLAUDE_API_KEY")
-        if claude_api_key:
-            try:
-                # Claudeモデル
-                self.models["claude-3-opus"] = ChatAnthropic(api_key=claude_api_key, model_name="claude-3-opus-20240229")
-                self.models["claude-3-sonnet"] = ChatAnthropic(api_key=claude_api_key, model_name="claude-3-sonnet-20240229")
-                logger.info("Anthropic Claudeモデルを初期化しました")
-            except Exception as e:
-                logger.error(f"Anthropic初期化エラー: {e}")
-        else:
-            logger.warning("CLAUDE_API_KEYが設定されていません")
-            
-        logger.info(f"初期化されたモデル: {list(self.models.keys())}")
-        logger.info(f"初期化されたビジョンモデル: {list(self.vision_models.keys())}")
+        logger.info("ModelManagerが初期化されました")
     
-    async def generate(self, model_name: str, prompt: str, parameters: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def initialize(self) -> bool:
         """
-        指定されたモデルを使用してテキスト生成を行います。
+        モデルマネージャーを初期化します。
         
-        Args:
-            model_name: 使用するモデルの名前
-            prompt: 生成のためのプロンプト
-            parameters: 生成パラメータのディクショナリ
-            
         Returns:
-            生成結果を含むディクショナリ
+            bool: 初期化に成功したかどうか
         """
-        if parameters is None:
-            parameters = {}
-            
-        # モデル名の正規化
-        model_name = model_name.lower()
-        
-        # モデルが初期化されているか確認
-        if model_name not in self.models:
-            if model_name in self.vision_models:
-                raise ValueError(f"{model_name}はビジョンモデルです。テキスト生成には使用できません。")
-            
-            # 利用可能なモデルが存在しない場合は初期化
-            if not self.models:
-                await self.initialize()
-                if not self.models:
-                    raise ValueError("有効なAIモデルが初期化されていません。APIキーを確認してください。")
-            
-            # 指定されたモデルが利用できない場合、代替モデルを選択
-            if self.models:
-                model_name = next(iter(self.models.keys()))
-                logger.warning(f"指定されたモデル '{model_name}' は利用できません。代わりに '{model_name}' を使用します。")
-            else:
-                raise ValueError(f"モデル '{model_name}' が利用できません。")
-        
         try:
-            # モデルを使用してテキスト生成
-            model = self.models[model_name]
+            # Googleのモデルを設定
+            if self.google_api_key:
+                genai.configure(api_key=self.google_api_key)
+                self.models["gemini-pro"] = {"provider": "google", "name": "gemini-pro", "status": "available"}
+                self.default_model = "gemini-pro"
+                logger.info("Googleのモデルが設定されました")
             
-            # 使用統計の更新
-            if model_name not in self.usage_stats:
-                self.usage_stats[model_name] = {"requests": 0, "tokens": 0}
-            self.usage_stats[model_name]["requests"] += 1
+            # デフォルトモデルの設定
+            self.default_model = os.environ.get("DEFAULT_MODEL", self.default_model)
             
-            # LangChainモデルに対応する処理
-            response = model.invoke(prompt)
-            content = response.content
-            
-            # レスポンスの整形
-            result = {
-                "model_name": model_name,
-                "response": content,
-                "tokens": None,  # トークン数の計算は省略
-                "usage": None
-            }
-            
-            return result
+            self.initialized = True
+            logger.info("ModelManagerの初期化が完了しました")
+            return True
         except Exception as e:
-            logger.error(f"生成エラー ({model_name}): {e}")
-            raise
+            logger.error(f"ModelManagerの初期化に失敗しました: {e}")
+            return False
     
-    async def generate_with_image(self, model_name: str, prompt: str, image_data: bytes, parameters: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def shutdown(self) -> bool:
         """
-        画像とテキストのプロンプトを使用してテキスト生成を行います。
+        モデルマネージャーをシャットダウンします。
         
-        Args:
-            model_name: 使用するビジョンモデルの名前
-            prompt: 生成のためのテキストプロンプト
-            image_data: バイナリ形式の画像データ
-            parameters: 生成パラメータのディクショナリ
-            
         Returns:
-            生成結果を含むディクショナリ
+            bool: シャットダウンに成功したかどうか
         """
-        if parameters is None:
-            parameters = {}
-            
-        # モデル名の正規化
-        model_name = model_name.lower()
-        
-        # ビジョンモデルが初期化されているか確認
-        if model_name not in self.vision_models:
-            # デフォルトのビジョンモデルがあれば使用
-            if "gemini-pro-vision" in self.vision_models:
-                model_name = "gemini-pro-vision"
-                logger.warning(f"指定されたモデルは利用できません。代わりに '{model_name}' を使用します。")
-            else:
-                raise ValueError(f"ビジョンモデル '{model_name}' が利用できません。")
-        
-        try:
-            # モデルを使用してテキスト生成
-            model = self.vision_models[model_name]
-            
-            # 使用統計の更新
-            if model_name not in self.usage_stats:
-                self.usage_stats[model_name] = {"requests": 0, "tokens": 0}
-            self.usage_stats[model_name]["requests"] += 1
-            
-            # LangChainモデルに対応する処理
-            response = model.invoke([prompt, image_data])
-            content = response.text
-            
-            # レスポンスの整形
-            result = {
-                "model_name": model_name,
-                "response": content,
-                "tokens": None,  # トークン数の計算は省略
-                "usage": None
-            }
-            
-            return result
-        except Exception as e:
-            logger.error(f"画像付き生成エラー ({model_name}): {e}")
-            raise
+        self.initialized = False
+        logger.info("ModelManagerをシャットダウンしました")
+        return True
     
-    def list_available_models(self) -> Dict[str, List[str]]:
-        """利用可能なモデルの一覧を返します"""
-        available_text_models = list(self.models.keys())
-        available_vision_models = list(self.vision_models.keys())
+    async def list_models(self) -> List[Dict[str, Any]]:
+        """
+        利用可能なモデルのリストを取得します。
         
-        return {
-            "text_models": available_text_models,
-            "vision_models": available_vision_models
-        }
+        Returns:
+            List[Dict[str, Any]]: モデル情報のリスト
+        """
+        return list(self.models.values())
     
-    def get_usage_statistics(self) -> Dict[str, Dict[str, int]]:
-        """各モデルの使用統計を返します"""
+    async def get_usage(self) -> Dict[str, Any]:
+        """
+        使用状況の統計を取得します。
+        
+        Returns:
+            Dict[str, Any]: 使用状況の統計
+        """
         return self.usage_stats
     
-    async def cleanup(self) -> None:
-        """モデルリソースのクリーンアップを行います"""
-        logger.info("モデルマネージャーのクリーンアップを実行...")
-        # 現在の実装では特別なクリーンアップは不要 
+    async def generate(self, messages: List[Dict[str, Any]], model: str = None, **kwargs) -> Dict[str, Any]:
+        """
+        テキストを生成します。
+        
+        Args:
+            messages (List[Dict[str, Any]]): メッセージのリスト
+            model (str, optional): 使用するモデル名
+            **kwargs: その他のパラメータ
+            
+        Returns:
+            Dict[str, Any]: 生成結果
+        """
+        if not self.initialized:
+            await self.initialize()
+        
+        # 使用状況の更新
+        self.usage_stats["requests"] += 1
+        
+        # モデルの選択
+        model_name = model or self.default_model
+        if not model_name or model_name not in self.models:
+            if self.default_model:
+                model_name = self.default_model
+                logger.warning(f"指定されたモデル '{model}' が見つかりません。デフォルトモデル '{self.default_model}' を使用します。")
+            else:
+                return {"error": "有効なモデルが指定されていません"}
+        
+        try:
+            model_info = self.models.get(model_name, {})
+            provider = model_info.get("provider")
+            
+            if provider == "google":
+                return await self._generate_with_google(messages, model_name, **kwargs)
+            else:
+                return {"error": f"プロバイダ '{provider}' はサポートされていません"}
+        except Exception as e:
+            logger.error(f"テキスト生成中にエラーが発生しました: {e}")
+            return {"error": str(e)}
+    
+    async def generate_with_image(self, messages: List[Dict[str, Any]], model: str = None, **kwargs) -> Dict[str, Any]:
+        """
+        画像付きのテキストを生成します。
+        
+        Args:
+            messages (List[Dict[str, Any]]): メッセージのリスト（画像URLを含む）
+            model (str, optional): 使用するモデル名
+            **kwargs: その他のパラメータ
+            
+        Returns:
+            Dict[str, Any]: 生成結果
+        """
+        if not self.initialized:
+            await self.initialize()
+        
+        # 使用状況の更新
+        self.usage_stats["requests"] += 1
+        
+        # モデルの選択
+        model_name = model or "gemini-pro-vision"  # 画像対応モデル
+        
+        try:
+            if self.google_api_key:
+                return await self._generate_with_google_vision(messages, model_name, **kwargs)
+            else:
+                return {"error": "画像対応モデルが設定されていません"}
+        except Exception as e:
+            logger.error(f"画像付きテキスト生成中にエラーが発生しました: {e}")
+            return {"error": str(e)}
+    
+    async def _generate_with_google(self, messages: List[Dict[str, Any]], model_name: str, **kwargs) -> Dict[str, Any]:
+        """
+        Google AI (Gemini) を使用してテキストを生成します。
+        
+        Args:
+            messages (List[Dict[str, Any]]): メッセージのリスト
+            model_name (str): モデル名
+            **kwargs: その他のパラメータ
+            
+        Returns:
+            Dict[str, Any]: 生成結果
+        """
+        try:
+            # パラメータの設定
+            temperature = kwargs.get("temperature", 0.7)
+            max_tokens = kwargs.get("max_tokens")
+            
+            # Googleの生成AIモデルを設定
+            generation_config = {
+                "temperature": temperature,
+                "top_p": kwargs.get("top_p", 0.95),
+                "top_k": kwargs.get("top_k", 40),
+            }
+            
+            if max_tokens:
+                generation_config["max_output_tokens"] = max_tokens
+            
+            # モデルの取得
+            model = genai.GenerativeModel(model_name=model_name, generation_config=generation_config)
+            
+            # メッセージの変換
+            google_messages = []
+            for msg in messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                
+                if role == "system":
+                    google_messages.append({"role": "user", "parts": [content]})
+                    google_messages.append({"role": "model", "parts": ["I'll help you with that request, following the instructions."]})
+                elif role == "user":
+                    google_messages.append({"role": "user", "parts": [content]})
+                elif role == "assistant":
+                    google_messages.append({"role": "model", "parts": [content]})
+            
+            # チャットの生成
+            chat = model.start_chat(history=google_messages[:-1] if google_messages else [])
+            response = chat.send_message(google_messages[-1]["parts"][0] if google_messages else "")
+            
+            # トークン使用量の更新
+            if hasattr(response, "usage"):
+                prompt_tokens = getattr(response.usage, "prompt_tokens", 0)
+                completion_tokens = getattr(response.usage, "completion_tokens", 0)
+                self.usage_stats["tokens"] += prompt_tokens + completion_tokens
+            
+            # レスポンスの加工
+            return {
+                "text": response.text,
+                "model": model_name,
+                "finish_reason": "stop"
+            }
+        except Exception as e:
+            logger.error(f"Google AI でのテキスト生成中にエラーが発生しました: {e}")
+            return {"error": str(e)}
+    
+    async def _generate_with_google_vision(self, messages: List[Dict[str, Any]], model_name: str, **kwargs) -> Dict[str, Any]:
+        """
+        Google AI (Gemini) の画像対応モデルを使用してテキストを生成します。
+        
+        Args:
+            messages (List[Dict[str, Any]]): メッセージのリスト（画像URLを含む）
+            model_name (str): モデル名
+            **kwargs: その他のパラメータ
+            
+        Returns:
+            Dict[str, Any]: 生成結果
+        """
+        try:
+            # パラメータの設定
+            temperature = kwargs.get("temperature", 0.7)
+            max_tokens = kwargs.get("max_tokens")
+            
+            # Googleの生成AIモデルを設定
+            generation_config = {
+                "temperature": temperature,
+                "top_p": kwargs.get("top_p", 0.95),
+                "top_k": kwargs.get("top_k", 40),
+            }
+            
+            if max_tokens:
+                generation_config["max_output_tokens"] = max_tokens
+            
+            # モデルの取得
+            model = genai.GenerativeModel(model_name="gemini-pro-vision", generation_config=generation_config)
+            
+            # メッセージの変換
+            prompt_parts = []
+            
+            for msg in messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                
+                if isinstance(content, list):
+                    # マルチモーダルコンテンツ
+                    for item in content:
+                        if item.get("type") == "text":
+                            prompt_parts.append(item.get("text", ""))
+                        elif item.get("type") == "image":
+                            image_url = item.get("image_url", {}).get("url", "")
+                            if image_url:
+                                prompt_parts.append(genai.types.Image.from_url(image_url))
+                else:
+                    # テキストのみのコンテンツ
+                    prompt_parts.append(content)
+            
+            # 応答の生成
+            response = model.generate_content(prompt_parts)
+            
+            # トークン使用量の更新
+            if hasattr(response, "usage"):
+                prompt_tokens = getattr(response.usage, "prompt_tokens", 0)
+                completion_tokens = getattr(response.usage, "completion_tokens", 0)
+                self.usage_stats["tokens"] += prompt_tokens + completion_tokens
+            
+            # レスポンスの加工
+            return {
+                "text": response.text,
+                "model": model_name,
+                "finish_reason": "stop"
+            }
+        except Exception as e:
+            logger.error(f"Google Vision AIでのテキスト生成中にエラーが発生しました: {e}")
+            return {"error": str(e)} 

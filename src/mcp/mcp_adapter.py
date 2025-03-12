@@ -30,7 +30,9 @@ class MCPAdapter:
         self.host = host or os.environ.get("MCP_HOST", "localhost")
         self.port = port or int(os.environ.get("MCP_PORT", 8765))
         self.base_url = f"http://{self.host}:{self.port}"
-        self.api_url = f"{self.base_url}/api"
+        
+        # APIエンドポイントを修正（サーバーのエンドポイント構造に合わせる）
+        # self.api_url = f"{self.base_url}/api"
         
         # サーバー情報
         self.server_process = None
@@ -129,8 +131,10 @@ class MCPAdapter:
                         # キープアライブスレッドの開始
                         self._start_keep_alive_thread()
                         return True
-                except:
-                    pass
+                    else:
+                        logger.error(f"MCPサーバーが応答しません: {response.status_code}")
+                except Exception as e:
+                    logger.error(f"MCPサーバーの起動中にエラーが発生しました: {e}")
                 time.sleep(1)  # 1秒待機
             
             logger.error(f"MCPサーバーの起動に失敗しました: {max_retries}回のリトライ後にサーバーが応答しません")
@@ -163,8 +167,9 @@ class MCPAdapter:
                     requests.post(f"{self.base_url}/shutdown", timeout=2)
                     # 少し待機して自然に終了するか確認
                     time.sleep(2)
-                except:
-                    pass
+                
+                except Exception as e:
+                    logger.error(f"MCPサーバーの停止中にエラーが発生しました: {e}")
                 
                 # プロセスが終了したか確認
                 if self.server_process.poll() is None:
@@ -194,14 +199,16 @@ class MCPAdapter:
             try:
                 response = requests.get(f"{self.base_url}/health", timeout=1)
                 return response.status_code == 200
-            except:
+            except Exception as e:
+                logger.error(f"MCPサーバーの実行状態確認中にエラーが発生しました: {e}")
                 return False
         
         # サーバーがすでに起動しているか確認（外部で起動されているケース）
         try:
             response = requests.get(f"{self.base_url}/health", timeout=1)
             return response.status_code == 200
-        except:
+        except Exception as e:
+            logger.error(f"MCPサーバーの実行状態確認中にエラーが発生しました: {e}")
             return False
     
     def _start_keep_alive_thread(self):
@@ -226,12 +233,11 @@ class MCPAdapter:
                         self.stop_server()
                         time.sleep(1)
                         self.start_server()
-                except:
-                    logger.warning("MCPサーバーとの接続が失われました。再起動を試みます。")
+                except Exception as e:
+                    logger.warning(f"MCPサーバーとの接続が失われました: {e}。再起動を試みます。")
                     self.stop_server()
                     time.sleep(1)
                     self.start_server()
-        
         self.running = True
         self.keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
         self.keep_alive_thread.start()
@@ -271,12 +277,18 @@ class MCPAdapter:
                 return {"status": "error", "message": "サーバーに接続されていません"}
         
         try:
-            url = f"{self.api_url}/generate"
+            # URLを修正
+            url = f"{self.base_url}/generate"
             payload = {
-                "prompt": prompt,
-                "system_prompt": system_prompt,
-                "model": model
+                "messages": [
+                    {"role": "system", "content": system_prompt} if system_prompt else None,
+                    {"role": "user", "content": prompt}
+                ],
+                "model": model,
+                "stream": False
             }
+            # Noneの項目を削除
+            payload["messages"] = [msg for msg in payload["messages"] if msg]
             
             async with asyncio.timeout(60):  # 60秒のタイムアウト
                 session = requests.Session()
@@ -306,8 +318,12 @@ class MCPAdapter:
                 return {"status": "error", "message": "サーバーに接続されていません"}
         
         try:
-            api_url = f"{self.api_url}/browser/navigate"
-            payload = {"url": url}
+            # URLを修正
+            api_url = f"{self.base_url}/browser"
+            payload = {
+                "action": "navigate",
+                "params": {"url": url}
+            }
             
             async with asyncio.timeout(30):  # 30秒のタイムアウト
                 session = requests.Session()
@@ -336,8 +352,12 @@ class MCPAdapter:
                 return {"status": "error", "message": "サーバーに接続されていません"}
         
         try:
-            api_url = f"{self.api_url}/browser/click"
-            payload = {"selector": selector}
+            # URLを修正
+            api_url = f"{self.base_url}/browser"
+            payload = {
+                "action": "click",
+                "params": {"selector": selector}
+            }
             
             async with asyncio.timeout(30):  # 30秒のタイムアウト
                 session = requests.Session()
@@ -367,8 +387,12 @@ class MCPAdapter:
                 return {"status": "error", "message": "サーバーに接続されていません"}
         
         try:
-            api_url = f"{self.api_url}/browser/type"
-            payload = {"selector": selector, "text": text}
+            # URLを修正
+            api_url = f"{self.base_url}/browser"
+            payload = {
+                "action": "type",
+                "params": {"selector": selector, "text": text}
+            }
             
             async with asyncio.timeout(30):  # 30秒のタイムアウト
                 session = requests.Session()
@@ -397,15 +421,20 @@ class MCPAdapter:
                 return {"status": "error", "message": "サーバーに接続されていません"}
         
         try:
-            api_url = f"{self.api_url}/browser/get_text"
-            payload = {"selector": selector}
+            # URLを修正
+            api_url = f"{self.base_url}/browser"
+            payload = {
+                "action": "get_text",
+                "params": {"selector": selector}
+            }
             
             async with asyncio.timeout(30):  # 30秒のタイムアウト
                 session = requests.Session()
                 response = session.post(api_url, json=payload)
                 
                 if response.status_code == 200:
-                    return {"status": "success", "result": response.json().get("text", "")}
+                    result = response.json()
+                    return {"status": "success", "result": result.get("result", {}).get("text", "")}
                 else:
                     return {"status": "error", "message": f"APIエラー: {response.status_code} - {response.text}"}
         except Exception as e:
@@ -427,15 +456,20 @@ class MCPAdapter:
                 return {"status": "error", "message": "サーバーに接続されていません"}
         
         try:
-            api_url = f"{self.api_url}/browser/evaluate"
-            payload = {"code": code}
+            # URLを修正
+            api_url = f"{self.base_url}/browser"
+            payload = {
+                "action": "evaluate",
+                "params": {"code": code}
+            }
             
             async with asyncio.timeout(30):  # 30秒のタイムアウト
                 session = requests.Session()
                 response = session.post(api_url, json=payload)
                 
                 if response.status_code == 200:
-                    return {"status": "success", "result": response.json().get("result", "")}
+                    result = response.json()
+                    return {"status": "success", "result": result.get("result", {}).get("result", "")}
                 else:
                     return {"status": "error", "message": f"APIエラー: {response.status_code} - {response.text}"}
         except Exception as e:
@@ -457,10 +491,14 @@ class MCPAdapter:
                 return {"status": "error", "message": "サーバーに接続されていません"}
         
         try:
-            api_url = f"{self.api_url}/browser/screenshot"
-            payload = {}
+            # URLを修正
+            api_url = f"{self.base_url}/browser"
+            payload = {
+                "action": "screenshot",
+                "params": {}
+            }
             if path:
-                payload["path"] = path
+                payload["params"]["path"] = path
             
             async with asyncio.timeout(30):  # 30秒のタイムアウト
                 session = requests.Session()
@@ -468,6 +506,7 @@ class MCPAdapter:
                 
                 if response.status_code == 200:
                     result = response.json()
+                    result = result.get("result", {})
                     if "path" in result:
                         # ファイルとして保存されている場合
                         return {"status": "success", "result": {"path": result["path"]}}
