@@ -190,3 +190,22 @@ MIT License
 3. AIプロバイダーの設定とAPIキーの有効性
 
 詳細なトラブルシューティングは[Wiki](https://github.com/zapabob/DesktopAgent/wiki)を参照してください。
+
+## インストール時のトラブルシューティング
+
+以下の問題が発生した場合の対処法です：
+
+### OpenHardwareMonitorの接続エラー
+- OpenHardwareMonitorがインストールされていない場合、システム監視の温度表示機能は制限されます
+- [OpenHardwareMonitor](https://openhardwaremonitor.org/downloads/)をインストールすることで解決できます
+- アプリケーションは管理者権限で実行する必要があります
+
+### 音声認識関連の問題
+- CUDA対応GPUが必要です
+- PyTorch CUDAバージョンが正しくインストールされていることを確認してください
+- CPUモードで実行する場合は、`config.yaml`で`device: "cpu"`に設定してください
+
+### ブラウザ制御の問題
+- Playwrightの最新バージョンがインストールされていることを確認してください
+- ブラウザパスが正しく設定されていることを確認してください
+- 必要に応じて`browser-use`パッケージを更新してください：`pip install -U browser-use`
