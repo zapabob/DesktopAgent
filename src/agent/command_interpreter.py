@@ -10,16 +10,16 @@ import threading
 import os
 import asyncio
 
-from .keyboard_monitor import KeyboardMonitor
-from src.desktop.browser_controller import BrowserController
-
 # browser_useのインポートを試行
 try:
-    from browser-use import Browser
+    from browser_use import Browser
     BROWSER_USE_AVAILABLE = True
 except ImportError:
     BROWSER_USE_AVAILABLE = False
-    logging.getLogger(__name__).warning("browser-useパッケージがインポートできません。一部の機能が制限されます。")
+    logging.getLogger(__name__).warning("browser_useパッケージがインポートできません。一部の機能が制限されます。")
+
+from .keyboard_monitor import KeyboardMonitor
+from src.desktop.browser_controller import BrowserController
 
 class CommandInterpreter:
     def __init__(self):
@@ -31,7 +31,7 @@ class CommandInterpreter:
         # 従来のブラウザコントローラー（後方互換性用）
         self.browser_controller = BrowserController()
         
-        # 新しいbrowser-useのブラウザインスタンス
+        # 新しいbrowser_useのブラウザインスタンス
         self.browser = None
         self.browser_loop = None
         
@@ -126,9 +126,9 @@ class CommandInterpreter:
         return command
 
     def initialize_browser(self):
-        """browser-useのブラウザを初期化"""
+        """browser_useのブラウザを初期化"""
         if not BROWSER_USE_AVAILABLE:
-            self.logger.warning("browser-useが利用できないため、従来のブラウザコントローラーを使用します")
+            self.logger.warning("browser_useが利用できないため、従来のブラウザコントローラーを使用します")
             return False
             
         if self.browser is None:
@@ -138,9 +138,9 @@ class CommandInterpreter:
             def init_browser():
                 try:
                     self.browser = Browser()
-                    self.logger.info("browser-useブラウザインスタンスを初期化しました")
+                    self.logger.info("browser_useブラウザインスタンスを初期化しました")
                 except Exception as e:
-                    self.logger.error(f"browser-useブラウザの初期化に失敗しました: {e}")
+                    self.logger.error(f"browser_useブラウザの初期化に失敗しました: {e}")
                     return False
             
             # 非同期で初期化を実行
@@ -182,9 +182,9 @@ class CommandInterpreter:
         return success
     
     def _run_browser_async(self, coro):
-        """browser-useの非同期関数を実行するヘルパーメソッド"""
+        """browser_useの非同期関数を実行するヘルパーメソッド"""
         if not BROWSER_USE_AVAILABLE:
-            self.logger.warning("browser-useが利用できないため、従来のコントローラーを使用します")
+            self.logger.warning("browser_useが利用できないため、従来のコントローラーを使用します")
             return False
             
         browser_initialized = self.initialize_browser()
@@ -215,23 +215,23 @@ class CommandInterpreter:
             thread.join()
             return result[0]
     
-    # ブラウザ関連ハンドラ (browser-useを使用)
+    # ブラウザ関連ハンドラ (browser_useを使用)
     def _open_browser(self, match, command_text: str) -> Tuple[bool, str]:
-        """ブラウザを開くコマンドを処理 (browser-useを使用)"""
+        """ブラウザを開くコマンドを処理 (browser_useを使用)"""
         url = match.group(3).strip()
         # URLにスキームがない場合は追加
         if not url.startswith(('http://', 'https://')):
             url = f"https://{url}"
         
         try:
-            # browser-useを使用
+            # browser_useを使用
             success = self._run_browser_async(self.browser.navigate(url))
             if success:
                 message = f"ブラウザで {url} を開きました"
                 return True, message
             
-            # browser-useが失敗した場合、従来のコントローラーを使用
-            self.logger.info("browser-useによる操作が失敗しました。従来のコントローラーを使用します。")
+            # browser_useが失敗した場合、従来のコントローラーを使用
+            self.logger.info("browser_useによる操作が失敗しました。従来のコントローラーを使用します。")
             success = self.browser_controller.open_browser(url)
             message = f"ブラウザで {url} を開き" + ("ました" if success else "ませんでした")
             return success, message
@@ -240,11 +240,11 @@ class CommandInterpreter:
             return False, f"ブラウザ操作中にエラーが発生しました: {str(e)}"
     
     def _search_youtube(self, match, command_text: str) -> Tuple[bool, str]:
-        """YouTubeで検索するコマンドを処理 (browser-useを使用)"""
+        """YouTubeで検索するコマンドを処理 (browser_useを使用)"""
         query = match.group(3).strip()
         
         try:
-            # browser-useを使用して検索
+            # browser_useを使用して検索
             search_function = self.browser.search_youtube if hasattr(self.browser, 'search_youtube') else self.browser.youtube
             success = self._run_browser_async(search_function(query))
             if success:
@@ -260,11 +260,11 @@ class CommandInterpreter:
             return False, f"YouTube検索中にエラーが発生しました: {str(e)}"
     
     def _search_google(self, match, command_text: str) -> Tuple[bool, str]:
-        """Googleで検索するコマンドを処理 (browser-useを使用)"""
+        """Googleで検索するコマンドを処理 (browser_useを使用)"""
         query = match.group(3).strip()
         
         try:
-            # browser-useを使用して検索
+            # browser_useを使用して検索
             search_function = self.browser.search_google if hasattr(self.browser, 'search_google') else self.browser.google
             success = self._run_browser_async(search_function(query))
             if success:
@@ -280,9 +280,9 @@ class CommandInterpreter:
             return False, f"Google検索中にエラーが発生しました: {str(e)}"
     
     def _open_gmail(self, match, command_text: str) -> Tuple[bool, str]:
-        """Gmailを開くコマンドを処理 (browser-useを使用)"""
+        """Gmailを開くコマンドを処理 (browser_useを使用)"""
         try:
-            # browser-useを使用
+            # browser_useを使用
             success = self._run_browser_async(self.browser.navigate("https://mail.google.com"))
             if success:
                 message = "Gmailを開きました"
@@ -297,9 +297,9 @@ class CommandInterpreter:
             return False, f"Gmail操作中にエラーが発生しました: {str(e)}"
     
     def _open_calendar(self, match, command_text: str) -> Tuple[bool, str]:
-        """カレンダーを開くコマンドを処理 (browser-useを使用)"""
+        """カレンダーを開くコマンドを処理 (browser_useを使用)"""
         try:
-            # browser-useを使用
+            # browser_useを使用
             success = self._run_browser_async(self.browser.navigate("https://calendar.google.com"))
             if success:
                 message = "カレンダーを開きました"
@@ -313,7 +313,7 @@ class CommandInterpreter:
             self.logger.error(f"カレンダー操作エラー: {e}")
             return False, f"カレンダー操作中にエラーが発生しました: {str(e)}"
     
-    # 高度なブラウザ操作コマンド (browser-useでのみ実装)
+    # 高度なブラウザ操作コマンド (browser_useでのみ実装)
     def _click_element(self, match, command_text: str) -> Tuple[bool, str]:
         """要素をクリックするコマンドを処理"""
         selector = match.group(3).strip()
@@ -324,7 +324,7 @@ class CommandInterpreter:
                 # 単純なテキストの場合は、テキストを含む要素を探す
                 selector = f"//*[contains(text(), '{selector}')]"
             
-            # browser-useを使用して要素をクリック
+            # browser_useを使用して要素をクリック
             success = self._run_browser_async(self.browser.click(selector))
             message = f"要素 '{selector}' を" + ("クリックしました" if success else "クリックできませんでした")
             return success, message
@@ -341,7 +341,7 @@ class CommandInterpreter:
             os.makedirs(screenshot_dir, exist_ok=True)
             screenshot_path = os.path.join(screenshot_dir, f"screenshot_{now}.png")
             
-            # browser-useを使用してスクリーンショット撮影
+            # browser_useを使用してスクリーンショット撮影
             success = self._run_browser_async(self.browser.screenshot(screenshot_path))
             message = f"スクリーンショットを" + (f"{screenshot_path}に保存しました" if success else "保存できませんでした")
             return success, message
@@ -387,13 +387,13 @@ class CommandInterpreter:
         return self.browser_controller.get_available_browsers()
 
     def close_browser(self):
-        """browser-useのブラウザを閉じる"""
+        """browser_useのブラウザを閉じる"""
         if self.browser is not None:
             try:
                 # 非同期関数を同期的に実行
                 if self.browser_loop:
                     self.browser_loop.run_until_complete(self.browser.close())
-                self.logger.info("browser-useブラウザインスタンスを閉じました")
+                self.logger.info("browser_useブラウザインスタンスを閉じました")
             except Exception as e:
                 self.logger.error(f"ブラウザを閉じる際にエラーが発生しました: {e}")
             finally:
