@@ -55,6 +55,10 @@ class CommandInterpreter:
         
         # コマンドパターンを定義
         self.command_patterns = [
+            # ブラウザ名 + サイト名/URL形式のコマンド（例：edge youtube）
+            (r'^(edge|chrome|firefox|brave|opera)\s+(youtube|google|gmail|calendar|maps|drive)$', self._browser_site),
+            (r'^(edge|chrome|firefox|brave|opera)\s+(https?://.+)$', self._browser_url),
+            
             # ブラウザ関連コマンド
             (r'(ブラウザ|browser)(\s*で|\s*を)?(.+)(を)?(開く|開いて|見る|表示)', self._open_browser),
             (r'(youtube|ユーチューブ)(\s*で|\s*を)?(.+)(を)?(検索|見る|開く|再生)', self._search_youtube),
@@ -81,152 +85,256 @@ class CommandInterpreter:
         Args:
             llm: 使用するLLM（OpenAI, Anthropic, など）
         """
-        if not BROWSER_USE_AVAILABLE:
-            self.logger.error("browser_useが利用できないため、LangChainエージェントは初期化できません")
-            return False
+        try:
+            from langchain.agents import Tool, AgentExecutor, create_react_agent
+            from langchain_core.prompts import PromptTemplate
             
-        # ブラウザの初期化
-        self.initialize_browser()
-        if self.browser is None:
-            self.logger.error("ブラウザの初期化に失敗したため、LangChainエージェントは初期化できません")
-            return False
+            # ブラウザ操作用のツールを定義
+            tools = [
+                Tool(
+                    name="navigate",
+                    func=self._tool_navigate,
+                    description="ブラウザで指定されたURLに移動します。URLを引数として渡してください。"
+                ),
+                Tool(
+                    name="click",
+                    func=self._tool_click,
+                    description="ブラウザ上の要素をクリックします。CSSセレクタかXPathを引数として渡してください。"
+                ),
+                Tool(
+                    name="type",
+                    func=self._tool_type,
+                    description="ブラウザ上の入力欄にテキストを入力します。'セレクタ, テキスト'の形式で引数を渡してください。"
+                ),
+                Tool(
+                    name="screenshot",
+                    func=self._tool_screenshot,
+                    description="現在のページのスクリーンショットを撮り、保存します。引数は不要です。"
+                ),
+                Tool(
+                    name="get_text",
+                    func=self._tool_get_text,
+                    description="指定した要素のテキストを取得します。CSSセレクタかXPathを引数として渡してください。"
+                ),
+                Tool(
+                    name="execute_js",
+                    func=self._tool_execute_js,
+                    description="JavaScriptコードをブラウザ上で実行します。JavaScriptコードを引数として渡してください。"
+                ),
+            ]
             
-        # ブラウザ操作ツールの作成
-        tools = [
-            Tool(
-                name="Navigate",
-                func=self._tool_navigate,
-                description="Webサイトを開きます。URLを入力してください。"
-            ),
-            Tool(
-                name="Click",
-                func=self._tool_click,
-                description="ページ上の要素をクリックします。セレクタやテキストを入力してください。"
-            ),
-            Tool(
-                name="Type",
-                func=self._tool_type,
-                description="テキストを入力します。セレクタと入力するテキストを指定してください。書式: 'セレクタ:::テキスト'"
-            ),
-            Tool(
-                name="Screenshot",
-                func=self._tool_screenshot,
-                description="現在のページのスクリーンショットを撮影します。"
-            ),
-            Tool(
-                name="GetText",
-                func=self._tool_get_text,
-                description="ページから要素のテキストを取得します。セレクタを入力してください。"
-            ),
-            Tool(
-                name="ExecuteJS",
-                func=self._tool_execute_js,
-                description="JavaScriptコードを実行します。実行するコードを入力してください。"
-            )
-        ]
-        
-        # プロンプトテンプレートの作成
-        prompt = PromptTemplate.from_template(
-            """あなたはブラウザを操作するAIアシスタントです。
-            与えられたタスクをブラウザの操作で完了させてください。
+            # プロンプトテンプレート
+            template = """あなたはブラウザを操作するAIアシスタントです。
+            ユーザーの要望に応じて、提供されたツールを使用してブラウザを操作します。
             
-            以下のツールが利用可能です:
+            使用可能なツール:
             {tools}
             
-            タスク: {input}
+            以下は実行すべきタスクです:
+            {input}
             
-            必要に応じてツールを使用し、タスクを完了させてください。
-            ユーザーが理解できるように、各ステップで何をしているかを日本語で説明してください。
+            このタスクを完了するために必要なステップを考えてください。
+            ブラウザの状態を追跡し、それに応じて適切なツールを呼び出してください。
             
-            {agent_scratchpad}
-            """
-        )
-        
-        # エージェントの作成
-        agent = create_react_agent(llm, tools, prompt)
-        self.agent_executor = AgentExecutor.from_agent_and_tools(
-            agent=agent, 
-            tools=tools, 
-            verbose=True,
-            handle_parsing_errors=True
-        )
-        
-        self.logger.info("LangChainエージェントを初期化しました")
-        return True
-        
-    # LangChain用のツール関数
+            思考: タスクを分解し、ステップバイステップでどのように進めるか考えてください
+            行動: 使用するツール名と引数
+            観察: ツールの出力
+            ... (思考/行動/観察を繰り返す)
+            
+            タスクが完了したら、最終的な結果を報告してください。"""
+            
+            # プロンプトを作成
+            prompt = PromptTemplate.from_template(template)
+            
+            # REACTエージェントを作成
+            agent = create_react_agent(llm, tools, prompt)
+            
+            # エージェント実行環境を構築
+            self.agent_executor = AgentExecutor.from_agent_and_tools(
+                agent=agent,
+                tools=tools,
+                verbose=True,
+                handle_parsing_errors=True
+            )
+            
+            self.logger.info("LangChainエージェントを初期化しました")
+            return True
+        except Exception as e:
+            self.logger.error(f"LangChainエージェント初期化エラー: {e}")
+            return False
+            
+    # LLMエージェント用のツール関数
     def _tool_navigate(self, url: str) -> str:
-        """URLに移動するツール"""
-        if not url.startswith(('http://', 'https://')):
-            url = f"https://{url}"
-            
-        success = self._run_browser_async(self.browser.navigate(url))
-        if success:
-            return f"成功: {url} に移動しました"
-        return f"失敗: {url} に移動できませんでした"
+        """ブラウザでURLに移動するツール"""
+        if self.browser is None:
+            self.initialize_browser()
+            if self.browser is None:
+                return "ブラウザを初期化できませんでした"
         
+        try:
+            # URLにスキームがない場合は追加
+            if not url.startswith(('http://', 'https://')):
+                url = f"https://{url}"
+                
+            # browser_methodsを使用
+            if hasattr(self, 'browser_methods') and 'navigate' in self.browser_methods:
+                success = self._run_browser_async(self.browser_methods['navigate'](url))
+            else:
+                # 互換性維持のため直接呼び出し
+                success = self._run_browser_async(self.browser.navigate(url))
+                
+            if success:
+                return f"URLに移動しました: {url}"
+            else:
+                return f"URLへの移動に失敗しました: {url}"
+        except Exception as e:
+            self.logger.error(f"ブラウザ移動エラー: {e}")
+            return f"エラーが発生しました: {str(e)}"
+    
     def _tool_click(self, selector: str) -> str:
-        """要素をクリックするツール"""
-        # セレクタの前処理
-        if not selector.startswith(('#', '.', '[', '/')):
-            # 単純なテキストの場合は、テキストを含む要素を探す
-            selector = f"//*[contains(text(), '{selector}')]"
+        """ブラウザで要素をクリックするツール"""
+        if self.browser is None:
+            self.initialize_browser()
+            if self.browser is None:
+                return "ブラウザを初期化できませんでした"
+        
+        try:
+            # セレクタの前処理
+            if not selector.startswith(('#', '.', '[', '/')):
+                # 単純なテキストの場合は、テキストを含む要素を探す
+                selector = f"//*[contains(text(), '{selector}')]"
             
-        success = self._run_browser_async(self.browser.click(selector))
-        if success:
-            return f"成功: '{selector}' をクリックしました"
-        return f"失敗: '{selector}' をクリックできませんでした"
+            # browser_methodsを使用
+            if hasattr(self, 'browser_methods') and 'click' in self.browser_methods and self.browser_methods['click'] is not None:
+                success = self._run_browser_async(self.browser_methods['click'](selector))
+            else:
+                # 互換性維持のため直接呼び出し
+                success = self._run_browser_async(self.browser.click(selector))
+                
+            if success:
+                return f"要素をクリックしました: {selector}"
+            else:
+                return f"要素のクリックに失敗しました: {selector}"
+        except Exception as e:
+            self.logger.error(f"要素クリックエラー: {e}")
+            return f"エラーが発生しました: {str(e)}"
         
     def _tool_type(self, selector_and_text: str) -> str:
         """テキストを入力するツール"""
-        try:
-            selector, text = selector_and_text.split(":::", 1)
-            selector = selector.strip()
-            text = text.strip()
-            
-            # セレクタの前処理
-            if not selector.startswith(('#', '.', '[', '/')):
-                selector = f"//*[contains(text(), '{selector}')]"
+        if self.browser is None:
+            self.initialize_browser()
+            if self.browser is None:
+                return "ブラウザを初期化できませんでした"
                 
-            success = self._run_browser_async(self.browser.type(selector, text))
-            if success:
-                return f"成功: '{selector}' に '{text}' を入力しました"
-            return f"失敗: '{selector}' にテキストを入力できませんでした"
-        except ValueError:
-            return "エラー: 入力形式が不正です。'セレクタ:::テキスト' の形式で入力してください"
+        try:
+            # 入力データの分割
+            parts = selector_and_text.split(',', 1)
+            if len(parts) != 2:
+                return "無効な入力形式です。'セレクタ, テキスト'の形式で入力してください"
+                
+            selector = parts[0].strip()
+            text = parts[1].strip()
             
+            # browser_methodsを使用
+            if hasattr(self, 'browser_methods') and 'type' in self.browser_methods and self.browser_methods['type'] is not None:
+                success = self._run_browser_async(self.browser_methods['type'](selector, text))
+            else:
+                # 互換性維持のため直接呼び出し
+                success = self._run_browser_async(self.browser.type(selector, text))
+                
+            if success:
+                return f"テキストを入力しました: セレクタ '{selector}', テキスト '{text}'"
+            else:
+                return f"テキスト入力に失敗しました: セレクタ '{selector}'"
+        except Exception as e:
+            self.logger.error(f"テキスト入力エラー: {e}")
+            return f"エラーが発生しました: {str(e)}"
+    
     def _tool_screenshot(self) -> str:
         """スクリーンショットを撮るツール"""
-        now = time.strftime("%Y%m%d_%H%M%S")
-        screenshot_dir = os.path.join(os.path.expanduser("~"), "Documents", "DesktopAgent", "Screenshots")
-        os.makedirs(screenshot_dir, exist_ok=True)
-        screenshot_path = os.path.join(screenshot_dir, f"screenshot_{now}.png")
+        if self.browser is None:
+            self.initialize_browser()
+            if self.browser is None:
+                return "ブラウザを初期化できませんでした"
         
-        success = self._run_browser_async(self.browser.screenshot(screenshot_path))
-        if success:
-            return f"成功: スクリーンショットを '{screenshot_path}' に保存しました"
-        return "失敗: スクリーンショットを撮影できませんでした"
-        
+        try:
+            # スクリーンショットの保存先
+            now = time.strftime("%Y%m%d_%H%M%S")
+            screenshot_dir = os.path.join(os.path.expanduser("~"), "Documents", "DesktopAgent", "Screenshots")
+            os.makedirs(screenshot_dir, exist_ok=True)
+            screenshot_path = os.path.join(screenshot_dir, f"screenshot_{now}.png")
+            
+            # browser_methodsを使用
+            if hasattr(self, 'browser_methods') and 'screenshot' in self.browser_methods and self.browser_methods['screenshot'] is not None:
+                success = self._run_browser_async(self.browser_methods['screenshot'](screenshot_path))
+            else:
+                # 互換性維持のため直接呼び出し
+                success = self._run_browser_async(self.browser.screenshot(screenshot_path))
+                
+            if success:
+                return f"スクリーンショットを保存しました: {screenshot_path}"
+            else:
+                return "スクリーンショットの保存に失敗しました"
+        except Exception as e:
+            self.logger.error(f"スクリーンショットエラー: {e}")
+            return f"エラーが発生しました: {str(e)}"
+    
     def _tool_get_text(self, selector: str) -> str:
         """要素のテキストを取得するツール"""
-        # セレクタの前処理
-        if not selector.startswith(('#', '.', '[', '/')):
-            selector = f"//*[contains(text(), '{selector}')]"
-            
-        result = self._run_browser_async(self.browser.get_text(selector))
-        if result:
-            return f"取得したテキスト: {result}"
-        return f"失敗: '{selector}' からテキストを取得できませんでした"
+        if self.browser is None:
+            self.initialize_browser()
+            if self.browser is None:
+                return "ブラウザを初期化できませんでした"
+        
+        try:
+            # browser_methodsを使用
+            if hasattr(self, 'browser_methods') and 'get_text' in self.browser_methods and self.browser_methods['get_text'] is not None:
+                text = self._run_browser_async(self.browser_methods['get_text'](selector))
+            else:
+                # 互換性維持のため直接呼び出し
+                text = self._run_browser_async(self.browser.get_text(selector))
+                
+            if text:
+                return f"取得したテキスト: {text}"
+            else:
+                return f"テキストを取得できませんでした: セレクタ '{selector}'"
+        except Exception as e:
+            self.logger.error(f"テキスト取得エラー: {e}")
+            return f"エラーが発生しました: {str(e)}"
     
     def _tool_execute_js(self, code: str) -> str:
         """JavaScriptを実行するツール"""
-        result = self._run_browser_async(self.browser.evaluate(code))
-        return f"JavaScriptの実行結果: {result}"
+        if self.browser is None:
+            self.initialize_browser()
+            if self.browser is None:
+                return "ブラウザを初期化できませんでした"
+        
+        try:
+            # browser_methodsを使用
+            if hasattr(self, 'browser_methods') and 'evaluate' in self.browser_methods and self.browser_methods['evaluate'] is not None:
+                result = self._run_browser_async(self.browser_methods['evaluate'](code))
+            else:
+                # 互換性維持のため直接呼び出し
+                result = self._run_browser_async(self.browser.evaluate(code))
+                
+            if result is not None:
+                return f"JavaScriptの実行結果: {result}"
+            else:
+                return "JavaScriptを実行しました"
+        except Exception as e:
+            self.logger.error(f"JavaScript実行エラー: {e}")
+            return f"エラーが発生しました: {str(e)}"
         
     def _control_with_llm(self, match, command_text: str) -> Tuple[bool, str]:
         """LLMを使ってブラウザを操作するコマンドを処理"""
         if self.agent_executor is None:
             return False, "LLMエージェントが初期化されていません。先にLLMを設定してください。"
+            
+        # browser_useが初期化されていない場合は初期化を試みる
+        if self.browser is None:
+            browser_initialized = self.initialize_browser()
+            if not browser_initialized:
+                return False, "ブラウザが初期化されていないため、LLMによるブラウザ操作ができません。"
             
         # ユーザー入力を取得するためのプロンプト
         user_input = input("ブラウザで何をしますか？ > ")
@@ -337,37 +445,72 @@ class CommandInterpreter:
             self.logger.warning("browser_useが利用できないため、従来のブラウザコントローラーを使用します")
             return False
             
-        if self.browser is None:
-            # 新しいイベントループの作成
-            if self.browser_loop is None:
-                self.browser_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self.browser_loop)
-            
-            async def init_browser_async():
-                try:
-                    # Browserインスタンスを作成
-                    self.browser = Browser()
-                    self.logger.info("browser_useブラウザインスタンスを初期化しました")
-                    return True
-                except Exception as e:
-                    self.logger.error(f"browser_useブラウザの初期化に失敗しました: {e}")
-                    return False
-            
-            # 非同期で初期化を実行
-            if threading.current_thread() is threading.main_thread():
-                return self.browser_loop.run_until_complete(init_browser_async())
-            else:
-                # 別スレッドから呼ばれた場合は結果を受け取る
-                result = [False]
-                def run_async():
-                    result[0] = self.browser_loop.run_until_complete(init_browser_async())
+        try:
+            if self.browser is None:
+                # 新しいイベントループの作成
+                if self.browser_loop is None:
+                    self.browser_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(self.browser_loop)
                 
-                thread = threading.Thread(target=run_async)
-                thread.start()
-                thread.join()
-                return result[0]
-        
-        return self.browser is not None
+                async def init_browser_async():
+                    try:
+                        # Browserインスタンスを作成
+                        self.browser = Browser()
+                        # APIメソッドの存在を確認
+                        self.browser_methods = {}
+                        # navigate/open/gotoメソッドのいずれかを使用
+                        if hasattr(self.browser, 'navigate'):
+                            self.browser_methods['navigate'] = self.browser.navigate
+                        elif hasattr(self.browser, 'open'):
+                            self.browser_methods['navigate'] = self.browser.open
+                        elif hasattr(self.browser, 'goto'):
+                            self.browser_methods['navigate'] = self.browser.goto
+                        else:
+                            self.browser_methods['navigate'] = lambda url: self.browser._page.goto(url)
+                            
+                        # YouTubeメソッド
+                        if hasattr(self.browser, 'youtube'):
+                            self.browser_methods['youtube'] = self.browser.youtube
+                        elif hasattr(self.browser, 'search_youtube'):
+                            self.browser_methods['youtube'] = self.browser.search_youtube
+                        
+                        # Googleメソッド
+                        if hasattr(self.browser, 'google'):
+                            self.browser_methods['google'] = self.browser.google
+                        elif hasattr(self.browser, 'search_google'):
+                            self.browser_methods['google'] = self.browser.search_google
+                            
+                        # その他のメソッド
+                        self.browser_methods['click'] = getattr(self.browser, 'click', None)
+                        self.browser_methods['type'] = getattr(self.browser, 'type', None)
+                        self.browser_methods['screenshot'] = getattr(self.browser, 'screenshot', None)
+                        self.browser_methods['get_text'] = getattr(self.browser, 'get_text', None)
+                        self.browser_methods['evaluate'] = getattr(self.browser, 'evaluate', None)
+                        
+                        self.logger.info("browser_useブラウザインスタンスを初期化しました")
+                        return True
+                    except Exception as e:
+                        self.logger.error(f"browser_useブラウザの初期化に失敗しました: {e}")
+                        return False
+                
+                # 非同期で初期化を実行
+                if threading.current_thread() is threading.main_thread():
+                    return self.browser_loop.run_until_complete(init_browser_async())
+                else:
+                    # 別スレッドから呼ばれた場合は結果を受け取る
+                    result = [False]
+                    def run_async():
+                        result[0] = self.browser_loop.run_until_complete(init_browser_async())
+                    
+                    thread = threading.Thread(target=run_async)
+                    thread.start()
+                    thread.join()
+                    return result[0]
+            
+            return self.browser is not None
+        except Exception as e:
+            self.logger.error(f"ブラウザ初期化中に予期せぬエラーが発生しました: {e}")
+            return False
 
     def parse_command(self, command_text: str) -> Tuple[bool, str]:
         """
@@ -413,10 +556,11 @@ class CommandInterpreter:
             self.logger.warning("browser_useが利用できないため、従来のコントローラーを使用します")
             return False
             
-        browser_initialized = self.initialize_browser()
-        if not browser_initialized or self.browser is None:
-            self.logger.error("ブラウザが初期化されていません")
-            return False
+        if self.browser is None:
+            browser_initialized = self.initialize_browser()
+            if not browser_initialized or self.browser is None:
+                self.logger.error("ブラウザが初期化されていません")
+                return False
         
         # 実行するコルーチン
         async def run_and_return():
@@ -427,18 +571,22 @@ class CommandInterpreter:
                 return False
         
         # メインスレッドかどうかで実行方法を変える
-        if threading.current_thread() is threading.main_thread():
-            return self.browser_loop.run_until_complete(run_and_return())
-        else:
-            # 別スレッドの場合は結果を受け取るための仕組みを作る
-            result = [None]
-            def run_async():
-                result[0] = self.browser_loop.run_until_complete(run_and_return())
-            
-            thread = threading.Thread(target=run_async)
-            thread.start()
-            thread.join()
-            return result[0]
+        try:
+            if threading.current_thread() is threading.main_thread():
+                return self.browser_loop.run_until_complete(run_and_return())
+            else:
+                # 別スレッドの場合は結果を受け取るための仕組みを作る
+                result = [None]
+                def run_async():
+                    result[0] = self.browser_loop.run_until_complete(run_and_return())
+                
+                thread = threading.Thread(target=run_async)
+                thread.start()
+                thread.join()
+                return result[0]
+        except Exception as e:
+            self.logger.error(f"ブラウザ非同期実行中にエラーが発生しました: {e}")
+            return False
     
     # ブラウザ関連ハンドラ (browser_useを使用)
     def _open_browser(self, match, command_text: str) -> Tuple[bool, str]:
@@ -450,12 +598,13 @@ class CommandInterpreter:
         
         try:
             # browser_useを使用
-            success = self._run_browser_async(self.browser.navigate(url))
-            if success:
-                message = f"ブラウザで {url} を開きました"
-                return True, message
+            if self.browser is not None and 'navigate' in self.browser_methods:
+                success = self._run_browser_async(self.browser_methods['navigate'](url))
+                if success:
+                    message = f"ブラウザで {url} を開きました"
+                    return True, message
             
-            # browser_useが失敗した場合、従来のコントローラーを使用
+            # ブラウザがNoneまたは失敗した場合、従来のコントローラーを使用
             self.logger.info("browser_useによる操作が失敗しました。従来のコントローラーを使用します。")
             success = self.browser_controller.open_browser(url)
             message = f"ブラウザで {url} を開き" + ("ました" if success else "ませんでした")
@@ -468,12 +617,13 @@ class CommandInterpreter:
         """YouTubeを開くコマンドを処理 (browser_useを使用)"""
         try:
             # browser_useを使用
-            success = self._run_browser_async(self.browser.navigate("https://www.youtube.com"))
-            if success:
-                message = "YouTubeを開きました"
-                return True, message
+            if self.browser is not None and 'navigate' in self.browser_methods:
+                success = self._run_browser_async(self.browser_methods['navigate']("https://www.youtube.com"))
+                if success:
+                    message = "YouTubeを開きました"
+                    return True, message
             
-            # 失敗した場合は従来のコントローラーを使用
+            # ブラウザがNoneまたは失敗した場合は従来のコントローラーを使用
             self.logger.info("browser_useによる操作が失敗しました。従来のコントローラーを使用します。")
             success = self.browser_controller.open_browser("https://www.youtube.com")
             message = "YouTubeを開き" + ("ました" if success else "ませんでした")
@@ -488,13 +638,13 @@ class CommandInterpreter:
         
         try:
             # browser_useを使用して検索
-            search_function = self.browser.search_youtube if hasattr(self.browser, 'search_youtube') else self.browser.youtube
-            success = self._run_browser_async(search_function(query))
-            if success:
-                message = f"YouTubeで '{query}' を検索しました"
-                return True, message
+            if self.browser is not None and hasattr(self, 'browser_methods') and 'youtube' in self.browser_methods:
+                success = self._run_browser_async(self.browser_methods['youtube'](query))
+                if success:
+                    message = f"YouTubeで '{query}' を検索しました"
+                    return True, message
                 
-            # 失敗した場合は従来のコントローラーを使用
+            # ブラウザがNoneまたは失敗した場合は従来のコントローラーを使用
             self.logger.info("browser_useによる操作が失敗しました。従来のコントローラーを使用します。")
             success = self.browser_controller.search_on_youtube(query)
             message = f"YouTubeで '{query}' を検索し" + ("ました" if success else "ませんでした")
@@ -509,13 +659,13 @@ class CommandInterpreter:
         
         try:
             # browser_useを使用して検索
-            search_function = self.browser.search_google if hasattr(self.browser, 'search_google') else self.browser.google
-            success = self._run_browser_async(search_function(query))
-            if success:
-                message = f"Googleで '{query}' を検索しました"
-                return True, message
+            if self.browser is not None and hasattr(self, 'browser_methods') and 'google' in self.browser_methods:
+                success = self._run_browser_async(self.browser_methods['google'](query))
+                if success:
+                    message = f"Googleで '{query}' を検索しました"
+                    return True, message
                 
-            # 失敗した場合は従来のコントローラーを使用
+            # ブラウザがNoneまたは失敗した場合は従来のコントローラーを使用
             self.logger.info("browser_useによる操作が失敗しました。従来のコントローラーを使用します。")
             success = self.browser_controller.search_on_google(query)
             message = f"Googleで '{query}' を検索し" + ("ました" if success else "ませんでした")
@@ -528,12 +678,13 @@ class CommandInterpreter:
         """Gmailを開くコマンドを処理 (browser_useを使用)"""
         try:
             # browser_useを使用
-            success = self._run_browser_async(self.browser.navigate("https://mail.google.com"))
-            if success:
-                message = "Gmailを開きました"
-                return True, message
+            if self.browser is not None and hasattr(self, 'browser_methods') and 'navigate' in self.browser_methods:
+                success = self._run_browser_async(self.browser_methods['navigate']("https://mail.google.com"))
+                if success:
+                    message = "Gmailを開きました"
+                    return True, message
                 
-            # 失敗した場合は従来のコントローラーを使用
+            # ブラウザがNoneまたは失敗した場合は従来のコントローラーを使用
             self.logger.info("browser_useによる操作が失敗しました。従来のコントローラーを使用します。")
             success = self.browser_controller.open_gmail()
             message = "Gmailを開き" + ("ました" if success else "ませんでした")
@@ -546,12 +697,13 @@ class CommandInterpreter:
         """カレンダーを開くコマンドを処理 (browser_useを使用)"""
         try:
             # browser_useを使用
-            success = self._run_browser_async(self.browser.navigate("https://calendar.google.com"))
-            if success:
-                message = "カレンダーを開きました"
-                return True, message
+            if self.browser is not None and hasattr(self, 'browser_methods') and 'navigate' in self.browser_methods:
+                success = self._run_browser_async(self.browser_methods['navigate']("https://calendar.google.com"))
+                if success:
+                    message = "カレンダーを開きました"
+                    return True, message
                 
-            # 失敗した場合は従来のコントローラーを使用
+            # ブラウザがNoneまたは失敗した場合は従来のコントローラーを使用
             self.logger.info("browser_useによる操作が失敗しました。従来のコントローラーを使用します。")
             success = self.browser_controller.open_calendar()
             message = "カレンダーを開き" + ("ました" if success else "ませんでした")
@@ -566,13 +718,25 @@ class CommandInterpreter:
         selector = match.group(3).strip()
         
         try:
+            # browser_useが初期化されていない場合は初期化を試みる
+            if self.browser is None:
+                self.initialize_browser()
+                
+            if self.browser is None:
+                return False, "ブラウザが初期化されていないため、要素をクリックできません。"
+                
             # セレクタの前処理
             if not selector.startswith(('#', '.', '[', '/')):
                 # 単純なテキストの場合は、テキストを含む要素を探す
                 selector = f"//*[contains(text(), '{selector}')]"
             
             # browser_useを使用して要素をクリック
-            success = self._run_browser_async(self.browser.click(selector))
+            if hasattr(self, 'browser_methods') and 'click' in self.browser_methods and self.browser_methods['click'] is not None:
+                success = self._run_browser_async(self.browser_methods['click'](selector))
+            else:
+                # 互換性のためにブラウザの直接メソッドを試みる
+                success = self._run_browser_async(self.browser.click(selector))
+                
             message = f"要素 '{selector}' を" + ("クリックしました" if success else "クリックできませんでした")
             return success, message
         except Exception as e:
@@ -582,6 +746,13 @@ class CommandInterpreter:
     def _take_screenshot(self, match, command_text: str) -> Tuple[bool, str]:
         """スクリーンショットを撮るコマンドを処理"""
         try:
+            # browser_useが初期化されていない場合は初期化を試みる
+            if self.browser is None:
+                self.initialize_browser()
+                
+            if self.browser is None:
+                return False, "ブラウザが初期化されていないため、スクリーンショットを撮影できません。"
+                
             # スクリーンショットの保存先
             now = time.strftime("%Y%m%d_%H%M%S")
             screenshot_dir = os.path.join(os.path.expanduser("~"), "Documents", "DesktopAgent", "Screenshots")
@@ -589,7 +760,12 @@ class CommandInterpreter:
             screenshot_path = os.path.join(screenshot_dir, f"screenshot_{now}.png")
             
             # browser_useを使用してスクリーンショット撮影
-            success = self._run_browser_async(self.browser.screenshot(screenshot_path))
+            if hasattr(self, 'browser_methods') and 'screenshot' in self.browser_methods and self.browser_methods['screenshot'] is not None:
+                success = self._run_browser_async(self.browser_methods['screenshot'](screenshot_path))
+            else:
+                # 互換性のためにブラウザの直接メソッドを試みる
+                success = self._run_browser_async(self.browser.screenshot(screenshot_path))
+                
             message = f"スクリーンショットを" + (f"{screenshot_path}に保存しました" if success else "保存できませんでした")
             return success, message
         except Exception as e:
@@ -653,6 +829,69 @@ class CommandInterpreter:
                 pass
             finally:
                 self.browser_loop = None
+
+    # 新しいコマンドハンドラー
+    def _browser_site(self, match, command_text: str) -> Tuple[bool, str]:
+        """ブラウザ名 + サイト名形式のコマンドを処理"""
+        browser_name = match.group(1).lower()
+        site_name = match.group(2).lower()
+        
+        # サイト名に基づいてURLを決定
+        site_urls = {
+            'youtube': 'https://www.youtube.com',
+            'google': 'https://www.google.com',
+            'gmail': 'https://mail.google.com',
+            'calendar': 'https://calendar.google.com',
+            'maps': 'https://maps.google.com',
+            'drive': 'https://drive.google.com'
+        }
+        
+        url = site_urls.get(site_name)
+        if not url:
+            return False, f"認識できないサイト名です: {site_name}"
+            
+        try:
+            # ブラウザを開く
+            if self.browser is not None and 'navigate' in self.browser_methods:
+                success = self._run_browser_async(self.browser_methods['navigate'](url))
+                if success:
+                    message = f"{browser_name}で{site_name}を開きました"
+                    return True, message
+            
+            # ブラウザがNoneまたは失敗した場合、従来のコントローラーを使用
+            self.logger.info("browser_useによる操作が失敗しました。従来のコントローラーを使用します。")
+            success = self.browser_controller.open_browser(url, browser=browser_name)
+            message = f"{browser_name}で{site_name}を開き" + ("ました" if success else "ませんでした")
+            return success, message
+        except Exception as e:
+            self.logger.error(f"ブラウザ操作エラー: {e}")
+            return False, f"ブラウザ操作中にエラーが発生しました: {str(e)}"
+            
+    def _browser_url(self, match, command_text: str) -> Tuple[bool, str]:
+        """ブラウザ名 + URL形式のコマンドを処理"""
+        browser_name = match.group(1).lower()
+        url = match.group(2).strip()
+        
+        # URLにスキームがない場合は追加
+        if not url.startswith(('http://', 'https://')):
+            url = f"https://{url}"
+            
+        try:
+            # ブラウザを開く
+            if self.browser is not None and 'navigate' in self.browser_methods:
+                success = self._run_browser_async(self.browser_methods['navigate'](url))
+                if success:
+                    message = f"{browser_name}で{url}を開きました"
+                    return True, message
+            
+            # ブラウザがNoneまたは失敗した場合、従来のコントローラーを使用
+            self.logger.info("browser_useによる操作が失敗しました。従来のコントローラーを使用します。")
+            success = self.browser_controller.open_browser(url, browser=browser_name)
+            message = f"{browser_name}で{url}を開き" + ("ました" if success else "ませんでした")
+            return success, message
+        except Exception as e:
+            self.logger.error(f"ブラウザ操作エラー: {e}")
+            return False, f"ブラウザ操作中にエラーが発生しました: {str(e)}"
 
 
 # 使用例：

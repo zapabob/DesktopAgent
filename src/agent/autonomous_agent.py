@@ -45,7 +45,7 @@ class AutonomousAgent:
         self.vision_model = None
         self.llm = None
         
-        # Gemini Proの初期化（デフォルト）
+        # Google AI（Gemini Pro）の初期化（優先）
         if use_vertexai:
             try:
                 google_api_key = os.getenv("GOOGLE_API_KEY")
@@ -58,6 +58,13 @@ class AutonomousAgent:
                     self.logger.info("Google AI (Gemini Pro) モデルを初期化しました")
                 else:
                     self.logger.warning("GOOGLE_API_KEYが設定されていません")
+                    # 警告メッセージを表示
+                    print("\n" + "="*80)
+                    print("警告: GOOGLE_API_KEYが設定されていません。")
+                    print("Google AI Studio（https://makersuite.google.com/）でAPIキーを取得して、")
+                    print(".envファイルに以下の行を追加してください：")
+                    print("GOOGLE_API_KEY=あなたのAPIキー")
+                    print("="*80 + "\n")
             except Exception as e:
                 self.logger.error(f"Google AI初期化エラー: {e}")
         
@@ -125,6 +132,8 @@ class AutonomousAgent:
             self.logger.error("有効なAIモデルが初期化されませんでした。APIキーを確認してください。")
             # APIキーがない場合はチェーンを構築しない
             self.chain = None
+            # 警告ログを追加
+            self.logger.warning("APIキーなしでローカルコマンド処理を使用します。高度な自然言語処理は制限されます。")
         else:
             # チェーンの構築
             self.chain = self.prompt | self.llm | self.parser
@@ -193,35 +202,106 @@ class AutonomousAgent:
     
     def process_natural_language(self, text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
         """
-        自然言語のテキストを処理し、コマンドタイプとパラメータを生成
+        自然言語の指示を処理してコマンドに変換する
         
         Args:
-            text (str): 処理する自然言語テキスト
+            text (str): ユーザーからの自然言語入力
             
         Returns:
-            Optional[Tuple[str, Dict[str, Any]]]: コマンドタイプとパラメータ、または解析できない場合はNone
+            Optional[Tuple[str, Dict[str, Any]]]: コマンドタイプとパラメータのタプル、
+            または変換できない場合はNone
         """
-        try:
-            # LLMチェーンが利用可能な場合は自然言語処理を実行
-            if self.chain is not None:
-                result = self.chain.invoke({"input": text})
-                command_type = result.get("command_type")
-                parameters = result.get("parameters", {})
-                
-                if command_type:
-                    return command_type, parameters
-                
-            # LLMが利用できない場合は、CommandInterpreterを使用
-            result = self.command_interpreter.interpret(text)
-            if result:
-                return result
-                
-            self.logger.warning(f"自然言語を解析できませんでした: {text}")
-            return None
+        # APIキーなしでも動作するように、まずcommand_interpreterでパターンマッチを試みる
+        interpreted = self.command_interpreter.interpret(text)
+        if interpreted:
+            self.logger.info(f"コマンドインタープリタ解釈結果: {interpreted}")
+            return interpreted
             
+        # AIチェーンが初期化されていない場合
+        if self.chain is None:
+            # APIキーがない場合は代替処理
+            # コマンドインタープリタを使った高度な単純パターンマッチング
+            self.logger.info(f"APIキーなしでコマンド解釈を実行: '{text}'")
+            return self.process_without_api(text)
+            
+        try:
+            # APIベースの処理
+            result = self.chain.invoke({"input": text})
+            command_type = result.get("command_type", "")
+            parameters = result.get("parameters", {})
+            
+            # APIからの応答をログに記録
+            self.logger.info(f"AI解釈結果: {command_type} - {parameters}")
+            
+            return command_type, parameters
         except Exception as e:
             self.logger.error(f"自然言語処理エラー: {e}")
-            return None
+            # エラー時は代替処理を試みる
+            return self.process_without_api(text)
+            
+    def process_without_api(self, text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+        """
+        APIキーなしで自然言語をコマンドに変換する代替メソッド
+        単純なパターンマッチングとルールベースの処理
+        
+        Args:
+            text (str): ユーザーからの自然言語入力
+            
+        Returns:
+            Optional[Tuple[str, Dict[str, Any]]]: コマンドタイプとパラメータのタプル
+        """
+        # コマンドインタープリタに処理を委譲
+        interpreted = self.command_interpreter.interpret(text)
+        if interpreted:
+            self.logger.info(f"コマンドインタープリタ解釈結果: {interpreted}")
+            return interpreted
+            
+        # ブラウザ関連コマンドの単純解釈
+        if "ブラウザ" in text or "開いて" in text:
+            for browser in ["edge", "chrome", "firefox"]:
+                if browser in text.lower():
+                    # URLが含まれているか確認
+                    for domain in [".com", ".net", ".org", ".jp", "http", "www"]:
+                        if domain in text:
+                            # 単純なURL抽出（改善の余地あり）
+                            words = text.split()
+                            for word in words:
+                                if domain in word:
+                                    url = word
+                                    if not url.startswith("http"):
+                                        url = "https://" + url
+                                    return "BROWSER", {"action": "open", "browser_type": browser, "url": url}
+                    
+                    # 特定サイト名の抽出
+                    sites = {
+                        "youtube": "https://www.youtube.com",
+                        "グーグル": "https://www.google.com",
+                        "google": "https://www.google.com",
+                        "gmail": "https://mail.google.com",
+                        "メール": "https://mail.google.com",
+                        "カレンダー": "https://calendar.google.com"
+                    }
+                    
+                    for site, url in sites.items():
+                        if site in text.lower():
+                            return "BROWSER", {"action": "open", "browser_type": browser, "url": url}
+            
+            # ブラウザ指定がない場合はデフォルト
+            return "BROWSER", {"action": "open", "browser_type": "edge", "url": "https://www.google.com"}
+        
+        # 単純なデスクトップコマンド
+        if "音量" in text:
+            if "上げる" in text or "アップ" in text:
+                return "DESKTOP", {"action": "volume_up"}
+            elif "下げる" in text or "ダウン" in text:
+                return "DESKTOP", {"action": "volume_down"}
+        
+        if "ミュート" in text or "消音" in text:
+            return "DESKTOP", {"action": "mute"}
+            
+        # コマンドとして解釈できない場合
+        self.logger.warning(f"コマンドとして解釈できませんでした: {text}")
+        return None
     
     def _handle_browser_command(self, params: Dict[str, Any]) -> bool:
         """ブラウザ操作コマンドの処理"""

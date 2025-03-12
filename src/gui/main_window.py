@@ -416,16 +416,11 @@ class MainWindow(QMainWindow):
         self.browser_tab.setLayout(layout)
 
     def launch_browser(self):
-        """ブラウザを起動する"""
+        """ブラウザユーザーインターフェースの初期化を行います"""
+        self.log("ブラウザを起動しました")
+        
         try:
-            # browser_useパッケージのインポートを試行
-            try:
-                from browser_use import Browser
-            except ImportError:
-                self.log("browser_useパッケージが見つかりません。pip install browser-useでインストールしてください。", logging.ERROR)
-                return
-
-            # 非同期関数なので、簡単なURLを開くだけにする
+            from browser_use import Browser
             import asyncio
             import threading
             
@@ -434,7 +429,14 @@ class MainWindow(QMainWindow):
                     try:
                         # headlessパラメータを削除し、デフォルト設定を使用
                         browser = Browser()
-                        await browser.navigate("https://www.google.com")
+                        # 'navigate'メソッドが存在しない場合は'open'または'goto'メソッドを試す
+                        if hasattr(browser, 'open'):
+                            await browser.open("https://www.google.com")
+                        elif hasattr(browser, 'goto'):
+                            await browser.goto("https://www.google.com")
+                        else:
+                            # APIが変更されている可能性がある場合の代替手段
+                            await browser._page.goto("https://www.google.com")
                         # ブラウザは自動的に閉じず、開いたままにする
                     except Exception as e:
                         self.log(f"ブラウザ起動エラー: {e}", logging.ERROR)
@@ -450,8 +452,6 @@ class MainWindow(QMainWindow):
             thread = threading.Thread(target=run_browser)
             thread.daemon = True
             thread.start()
-            
-            self.log("ブラウザを起動しました")
         except Exception as e:
             self.log(f"ブラウザの起動に失敗しました: {str(e)}")
 
@@ -485,7 +485,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.log(f"コマンド実行エラー: {str(e)}")
 
-    def log(self, message):
+    def log(self, message, level=logging.INFO):
         """ログを表示"""
         current_time = QTime.currentTime().toString("HH:mm:ss")
         log_message = f"[{current_time}] {message}"
@@ -493,10 +493,15 @@ class MainWindow(QMainWindow):
         
         # ログをファイルにも書き込む
         try:
-            if hasattr(self, 'logger') and self.logger:
-                self.logger.info(message)
-        except Exception:
-            pass  # ロギングエラーは無視
+            logger = logging.getLogger(__name__)
+            if level == logging.ERROR:
+                logger.error(message)
+            elif level == logging.WARNING:
+                logger.warning(message)
+            else:
+                logger.info(message)
+        except Exception as e:
+            print(f"ログ記録エラー: {e}")
 
     def setup_system_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
