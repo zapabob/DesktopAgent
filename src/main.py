@@ -30,9 +30,10 @@ logging.basicConfig(
 )
 
 # プロジェクトルートとsrcディレクトリをPythonパスに追加
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).resolve().parent.parent
 src_path = project_root / 'src'
-sys.path.insert(0, str(src_path))
+sys.path.insert(0, str(project_root))  # プロジェクトルートを追加
+sys.path.insert(0, str(src_path))      # srcディレクトリを追加
 
 # 必要なモジュールのインポート
 from gui.main_window import MainWindow

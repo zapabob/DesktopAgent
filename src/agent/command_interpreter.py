@@ -71,7 +71,7 @@ class CommandInterpreter:
         command = ''.join(self.command_buffer)
         self.command_buffer.clear()
         return command
-    
+
     def initialize_browser(self):
         """browser-useのブラウザを初期化"""
         if self.browser is None:
