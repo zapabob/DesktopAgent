@@ -62,32 +62,48 @@ class TaskDialog(QDialog):
 
 class MainWindow(QMainWindow):
     def __init__(self, agent, command_interpreter, system):
-        super().__init__()
-        self.agent = agent
-        self.command_interpreter = command_interpreter
-        self.system = system
-        self.pomodoro_time = 25 * 60  # 25分
-        self.break_time = 5 * 60      # 5分
-        self.timer_running = False
-        self.remaining_time = self.pomodoro_time
-        self.is_break = False
-        self.logger = logging.getLogger(__name__)
-        self.init_ui()
-        
-        # WMIの初期化
         try:
-            self.wmi_interface = wmi.WMI(namespace="root\\OpenHardwareMonitor")
-            self.ohm_available = True
+            super().__init__()
+            self.agent = agent
+            self.command_interpreter = command_interpreter
+            self.system = system
+            self.pomodoro_time = 25 * 60  # 25分
+            self.break_time = 5 * 60      # 5分
+            self.timer_running = False
+            self.remaining_time = self.pomodoro_time
+            self.is_break = False
+            self.logger = logging.getLogger(__name__)
+            
+            # WMIの初期化
+            try:
+                if self.system:
+                    self.wmi_interface = wmi.WMI(namespace="root\\OpenHardwareMonitor")
+                    self.ohm_available = True
+                else:
+                    self.ohm_available = False
+                    self.logger.warning("WMI初期化がスキップされています。システム変数がNoneです。")
+            except Exception as e:
+                self.logger.warning(f"OpenHardwareMonitorに接続できません。システム監視の一部機能が制限されます: {e}")
+                self.ohm_available = False
+            
+            self.logger.info("UIの初期化を開始します")
+            self.init_ui()
+            self.logger.info("UIの初期化が完了しました")
+            
+            self.setup_system_tray()
+            self.setup_timers()
+            self.logger.info("MainWindowの初期化が完了しました")
         except Exception as e:
-            self.logger.warning(f"OpenHardwareMonitorに接続できません。システム監視の一部機能が制限されます: {e}")
-            self.ohm_available = False
-        
-        self.setup_system_tray()
-        self.setup_timers()
+            self.logger.error(f"MainWindow初期化エラー: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
         
     def init_ui(self):
         """UIの初期化"""
         self.setWindowTitle('デスクトップエージェント')
+        # ウィンドウタイトルが正しく設定されることを確保
+        self.logger.info(f"ウィンドウタイトルを設定: {self.windowTitle()}")
+        
         self.setGeometry(100, 100, 1000, 700)
         
         # 時計ラベルの作成
@@ -417,26 +433,24 @@ class MainWindow(QMainWindow):
 
     def launch_browser(self):
         """ブラウザユーザーインターフェースの初期化を行います"""
-        self.log("ブラウザを起動しました")
+        self.log("ブラウザを起動しようとしています...")
+        
+        # browser-useの初期化を一時的に無効化
+        self.log("browser-useの初期化をスキップします。必要に応じて管理者に連絡してください。")
+        return
         
         try:
-            from browser_use import Browser
+            from browser_use import ActionModel
             import asyncio
             import threading
             
             def run_browser():
                 async def navigate():
                     try:
-                        # headlessパラメータを削除し、デフォルト設定を使用
-                        browser = Browser()
-                        # 'navigate'メソッドが存在しない場合は'open'または'goto'メソッドを試す
-                        if hasattr(browser, 'open'):
-                            await browser.open("https://www.google.com")
-                        elif hasattr(browser, 'goto'):
-                            await browser.goto("https://www.google.com")
-                        else:
-                            # APIが変更されている可能性がある場合の代替手段
-                            await browser._page.goto("https://www.google.com")
+                        # ActionModelを使用して初期化
+                        browser = ActionModel()
+                        # 直接navigateメソッドを使用
+                        await browser.navigate("https://www.google.com")
                         # ブラウザは自動的に閉じず、開いたままにする
                     except Exception as e:
                         self.log(f"ブラウザ起動エラー: {e}", logging.ERROR)
@@ -448,12 +462,14 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     self.log(f"ブラウザ実行エラー: {e}", logging.ERROR)
             
-            # 別スレッドで実行
+            # 別スレッドでブラウザを起動
             thread = threading.Thread(target=run_browser)
             thread.daemon = True
             thread.start()
+        except ImportError as e:
+            self.log(f"browser-useパッケージがインストールされていない可能性があります: {e}", logging.ERROR)
         except Exception as e:
-            self.log(f"ブラウザの起動に失敗しました: {str(e)}")
+            self.log(f"ブラウザの起動中にエラーが発生しました: {e}", logging.ERROR)
 
     def on_tab_changed(self, index):
         """タブが変更されたときの処理"""
