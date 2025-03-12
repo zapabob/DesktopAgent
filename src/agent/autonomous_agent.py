@@ -18,12 +18,14 @@ import pyautogui
 import keyboard
 import time
 from .keyboard_monitor import KeyboardMonitor
+from .command_interpreter import CommandInterpreter
 
 class AutonomousAgent:
     def __init__(self, db_logger):
         self.logger = logging.getLogger(__name__)
         self.db_logger = db_logger
         self.keyboard_monitor = KeyboardMonitor()
+        self.command_interpreter = CommandInterpreter()
         
         # 環境変数の読み込み
         load_dotenv()
@@ -85,75 +87,45 @@ class AutonomousAgent:
             except Exception as e:
                 self.logger.error(f"Anthropic初期化エラー: {e}")
         
+        # 出力パーサーの設定
+        self.parser = JsonOutputParser()
+        
+        # プロンプトテンプレートの設定
+        self.prompt = ChatPromptTemplate.from_messages([
+            ("system", """あなたはデスクトップ操作を支援するAIアシスタントです。
+            ユーザーの要求を理解し、適切なコマンドに変換してください。
+            
+            出力は以下のJSON形式で返してください：
+            {
+                "command_type": "BROWSER|FILE|DESKTOP|MOUSE|KEYBOARD|VISION",
+                "parameters": {
+                    "action": "実行するアクション",
+                    "browser_type": "edge|chrome|browser",
+                    "url": "開くURL",
+                    "path": "ファイルパス",
+                    "window": "ウィンドウ名",
+                    "application": "アプリケーション名",
+                    "x": "X座標",
+                    "y": "Y座標",
+                    "clicks": "クリック回数",
+                    "button": "left|right|middle",
+                    "duration": "操作時間（秒）",
+                    "keys": "キー操作シーケンス",
+                    "speed": "再生速度",
+                    "screenshot": "スクリーンショットの有無",
+                    "region": "キャプチャ領域"
+                }
+            }
+            """),
+            ("human", "{input}")
+        ])
+        
         # モデルが初期化されていない場合はエラーログ
         if self.llm is None:
             self.logger.error("有効なAIモデルが初期化されませんでした。APIキーを確認してください。")
-            # 出力パーサーの設定だけはしておく
-            self.parser = JsonOutputParser()
-            self.prompt = ChatPromptTemplate.from_messages([
-                ("system", """あなたはデスクトップ操作を支援するAIアシスタントです。
-                ユーザーの要求を理解し、適切なコマンドに変換してください。
-                
-                出力は以下のJSON形式で返してください：
-                {
-                    "command_type": "BROWSER|FILE|DESKTOP|MOUSE|KEYBOARD|VISION",
-                    "parameters": {
-                        "action": "実行するアクション",
-                        "browser_type": "edge|chrome|browser",
-                        "url": "開くURL",
-                        "path": "ファイルパス",
-                        "window": "ウィンドウ名",
-                        "application": "アプリケーション名",
-                        "x": "X座標",
-                        "y": "Y座標",
-                        "clicks": "クリック回数",
-                        "button": "left|right|middle",
-                        "duration": "操作時間（秒）",
-                        "keys": "キー操作シーケンス",
-                        "speed": "再生速度",
-                        "screenshot": "スクリーンショットの有無",
-                        "region": "キャプチャ領域"
-                    }
-                }
-                """),
-                ("human", "{input}")
-            ])
             # APIキーがない場合はチェーンを構築しない
             self.chain = None
         else:
-            # 出力パーサーの設定
-            self.parser = JsonOutputParser()
-            
-            # プロンプトテンプレートの設定
-            self.prompt = ChatPromptTemplate.from_messages([
-                ("system", """あなたはデスクトップ操作を支援するAIアシスタントです。
-                ユーザーの要求を理解し、適切なコマンドに変換してください。
-                
-                出力は以下のJSON形式で返してください：
-                {
-                    "command_type": "BROWSER|FILE|DESKTOP|MOUSE|KEYBOARD|VISION",
-                    "parameters": {
-                        "action": "実行するアクション",
-                        "browser_type": "edge|chrome|browser",
-                        "url": "開くURL",
-                        "path": "ファイルパス",
-                        "window": "ウィンドウ名",
-                        "application": "アプリケーション名",
-                        "x": "X座標",
-                        "y": "Y座標",
-                        "clicks": "クリック回数",
-                        "button": "left|right|middle",
-                        "duration": "操作時間（秒）",
-                        "keys": "キー操作シーケンス",
-                        "speed": "再生速度",
-                        "screenshot": "スクリーンショットの有無",
-                        "region": "キャプチャ領域"
-                    }
-                }
-                """),
-                ("human", "{input}")
-            ])
-            
             # チェーンの構築
             self.chain = self.prompt | self.llm | self.parser
         

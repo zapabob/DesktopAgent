@@ -73,7 +73,12 @@ class MainWindow(QMainWindow):
         self.init_ui()
         
         # WMIの初期化
-        self.wmi_interface = wmi.WMI(namespace="root\\OpenHardwareMonitor")
+        try:
+            self.wmi_interface = wmi.WMI(namespace="root\\OpenHardwareMonitor")
+            self.ohm_available = True
+        except Exception as e:
+            self.logger.warning(f"OpenHardwareMonitorに接続できません。システム監視の一部機能が制限されます: {e}")
+            self.ohm_available = False
         
         self.setup_system_tray()
         self.setup_timers()
@@ -456,16 +461,21 @@ class MainWindow(QMainWindow):
         self.cpu_bar.setValue(int(cpu_percent))
         
         try:
-            temperature_infos = self.wmi_interface.Sensor()
-            for sensor in temperature_infos:
-                if sensor.SensorType == 'Temperature':
-                    if 'CPU' in sensor.Name:
-                        self.cpu_temp_label.setText(f"CPU温度: {sensor.Value}°C")
-                    elif 'GPU' in sensor.Name:
-                        self.gpu_temp_label.setText(f"GPU温度: {sensor.Value}°C")
+            if hasattr(self, 'ohm_available') and self.ohm_available:
+                temperature_infos = self.wmi_interface.Sensor()
+                for sensor in temperature_infos:
+                    if sensor.SensorType == 'Temperature':
+                        if 'CPU' in sensor.Name:
+                            self.cpu_temp_label.setText(f"CPU温度: {sensor.Value}°C")
+                        elif 'GPU' in sensor.Name:
+                            self.gpu_temp_label.setText(f"GPU温度: {sensor.Value}°C")
+            else:
+                self.cpu_temp_label.setText("CPU温度: N/A (OHM未接続)")
+                self.gpu_temp_label.setText("GPU温度: N/A (OHM未接続)")
         except Exception as e:
-            self.cpu_temp_label.setText("CPU温度: N/A")
-            self.gpu_temp_label.setText("GPU温度: N/A")
+            self.logger.warning(f"温度情報取得エラー: {e}")
+            self.cpu_temp_label.setText("CPU温度: エラー")
+            self.gpu_temp_label.setText("GPU温度: エラー")
         
         # メモリ使用率
         memory = psutil.virtual_memory()

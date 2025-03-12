@@ -11,7 +11,7 @@ import os
 import asyncio
 
 from .keyboard_monitor import KeyboardMonitor
-from desktop.browser_controller import BrowserController
+from src.desktop.browser_controller import BrowserController
 from browser_use import Browser
 
 class CommandInterpreter:
