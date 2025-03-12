@@ -1,419 +1,524 @@
 import os
 import sys
-import asyncio
+import time
 import logging
+import socket
+import asyncio
+import json
 import subprocess
 import threading
-import time
-from typing import Dict, Any, Optional, List, Tuple
-
-# プロジェクトルートをパスに追加
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(script_dir))
-mcp_path = os.path.join(project_root, "MCP", "src")
-sys.path.append(mcp_path)
-
-# MCPクライアントのインポート
-try:
-    from client import MCPClient
-except ImportError:
-    pass
+import requests
+from typing import Any, Dict, Optional, List, Union, Tuple
 
 # ロギングの設定
-logger = logging.getLogger("mcp_adapter")
+logger = logging.getLogger(__name__)
 
 class MCPAdapter:
     """
-    デスクトップエージェントとMCPサーバーを連携するためのアダプタクラス
+    MCPサーバーとデスクトップエージェント間の通信を管理するアダプタークラス
     """
     
-    def __init__(self, server_url: Optional[str] = None):
+    def __init__(self, host: str = None, port: int = None):
         """
-        MCPアダプタを初期化
+        MCPアダプタを初期化します。
         
         Args:
-            server_url: MCPサーバーのURL
+            host (str, optional): MCPサーバーのホスト。デフォルトはNone（環境変数から読み込み）
+            port (int, optional): MCPサーバーのポート。デフォルトはNone（環境変数から読み込み）
         """
-        self.server_url = server_url or os.environ.get("MCP_SERVER_URL", "http://localhost:8000")
-        self.client = None
-        self.connected = False
+        # 設定の読み込み
+        self.host = host or os.environ.get("MCP_HOST", "localhost")
+        self.port = port or int(os.environ.get("MCP_PORT", 8765))
+        self.base_url = f"http://{self.host}:{self.port}"
+        self.api_url = f"{self.base_url}/api"
+        
+        # サーバー情報
         self.server_process = None
         self.keep_alive_thread = None
-        self.stop_flag = False
+        self.running = False
+        
+        # 接続情報
+        self.connected = False
+        
+        logger.info(f"MCPアダプタを初期化しました: {self.base_url}")
     
     async def connect(self) -> bool:
         """
-        MCPサーバーに接続
+        MCPサーバーに接続します。
         
         Returns:
-            bool: 接続の成否
+            bool: 接続に成功したかどうか
         """
         try:
-            if 'MCPClient' not in globals():
-                logger.error("MCPClientがインポートできません")
+            # サーバーの稼働状態を確認
+            status = await self.get_status()
+            if status.get("status") == "healthy":
+                self.connected = True
+                logger.info("MCPサーバーに接続しました")
+                return True
+            else:
+                logger.error(f"MCPサーバーの状態が正常ではありません: {status}")
                 return False
-                
-            self.client = MCPClient(base_url=self.server_url)
-            await self.client.__aenter__()
-            
-            # 接続テスト
-            await self.client.health_check()
-            self.connected = True
-            logger.info(f"MCPサーバーに接続しました: {self.server_url}")
-            return True
         except Exception as e:
-            logger.error(f"MCPサーバー接続エラー: {e}")
+            logger.error(f"MCPサーバーへの接続に失敗しました: {e}")
             self.connected = False
             return False
     
-    async def disconnect(self) -> None:
-        """MCPサーバーから切断"""
-        if self.client:
-            try:
-                await self.client.__aexit__(None, None, None)
-                logger.info("MCPサーバーから切断しました")
-            except Exception as e:
-                logger.error(f"MCPサーバー切断エラー: {e}")
-            finally:
-                self.client = None
-                self.connected = False
+    async def disconnect(self) -> bool:
+        """
+        MCPサーバーから切断します。
+        
+        Returns:
+            bool: 切断に成功したかどうか
+        """
+        self.connected = False
+        logger.info("MCPサーバーから切断しました")
+        return True
     
     def start_server(self) -> bool:
         """
-        MCPサーバーを起動
+        MCPサーバーを起動します。
         
         Returns:
-            bool: 起動の成否
+            bool: サーバーの起動に成功したかどうか
         """
-        if self.server_process:
-            logger.info("MCPサーバーは既に起動しています")
+        # サーバーが既に実行中かどうか確認
+        if self.is_server_running():
+            logger.info("MCPサーバーは既に実行中です")
             return True
-            
+        
         try:
-            # サーバー実行ファイルのパス
-            server_script = os.path.join(mcp_path, "server.py")
+            # サーバーディレクトリの取得
+            base_dir = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            server_dir = os.path.join(base_dir, "MCP")
             
-            # 実行コマンドの構築
-            cmd = [sys.executable, server_script]
+            if not os.path.exists(server_dir):
+                logger.error(f"サーバーディレクトリが見つかりません: {server_dir}")
+                return False
             
-            # サーバーをバックグラウンドで起動
-            logger.info(f"MCPサーバーを起動: {' '.join(cmd)}")
+            # 環境変数とコマンド設定
+            env = os.environ.copy()
+            env["PYTHONPATH"] = server_dir
             
-            # Windows環境ではcreationflags=subprocess.CREATE_NO_WINDOWを追加
-            if os.name == 'nt':
-                self.server_process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
+            # サーバー起動コマンド
+            if sys.platform == "win32":
+                cmd = ["python", os.path.join(server_dir, "src", "server.py")]
             else:
-                self.server_process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
+                cmd = ["python3", os.path.join(server_dir, "src", "server.py")]
             
-            # サーバー起動の待機
+            # サーバープロセスの起動
+            logger.info(f"MCPサーバーを起動します: {' '.join(cmd)}")
+            self.server_process = subprocess.Popen(
+                cmd,
+                cwd=server_dir,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            )
+            
+            # サーバーの起動を待機
+            self.running = True
             max_retries = 10
-            retry_interval = 1.0
-            
             for i in range(max_retries):
                 try:
-                    # 非同期ループを作成して接続テスト
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    success = loop.run_until_complete(self._check_server_running())
-                    loop.close()
-                    
-                    if success:
-                        # Keep-Aliveスレッドの開始
-                        self.stop_flag = False
-                        self.keep_alive_thread = threading.Thread(target=self._keep_alive_worker)
-                        self.keep_alive_thread.daemon = True
-                        self.keep_alive_thread.start()
-                        
-                        logger.info("MCPサーバーが正常に起動しました")
+                    response = requests.get(f"{self.base_url}/health", timeout=1)
+                    if response.status_code == 200:
+                        logger.info("MCPサーバーが起動しました")
+                        # キープアライブスレッドの開始
+                        self._start_keep_alive_thread()
                         return True
-                except Exception as e:
+                except:
                     pass
-                    
-                time.sleep(retry_interval)
+                time.sleep(1)  # 1秒待機
             
-            # 起動に失敗した場合
-            logger.error("MCPサーバーの起動に失敗しました")
+            logger.error(f"MCPサーバーの起動に失敗しました: {max_retries}回のリトライ後にサーバーが応答しません")
             self.stop_server()
             return False
             
         except Exception as e:
-            logger.error(f"MCPサーバー起動エラー: {e}")
+            logger.error(f"MCPサーバーの起動中にエラーが発生しました: {e}")
+            self.running = False
             return False
-    
-    async def _check_server_running(self) -> bool:
-        """
-        サーバーが起動しているか確認
-        
-        Returns:
-            bool: サーバーが起動している場合はTrue
-        """
-        try:
-            client = MCPClient(base_url=self.server_url)
-            await client.__aenter__()
-            await client.health_check()
-            await client.__aexit__(None, None, None)
-            return True
-        except Exception:
-            return False
-    
-    def _keep_alive_worker(self) -> None:
-        """
-        定期的にサーバーの状態を確認するワーカー
-        """
-        while not self.stop_flag:
-            try:
-                # 非同期ループを作成してヘルスチェック
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(self._check_server_running())
-                loop.close()
-                
-                if not result and self.server_process:
-                    logger.warning("MCPサーバーが応答していません")
-            except Exception as e:
-                logger.error(f"Keep-Aliveエラー: {e}")
-                
-            # 10秒間隔でチェック
-            time.sleep(10)
     
     def stop_server(self) -> bool:
         """
-        MCPサーバーを停止
+        MCPサーバーを停止します。
         
         Returns:
-            bool: 停止の成否
+            bool: サーバーの停止に成功したかどうか
         """
-        if not self.server_process:
-            logger.info("MCPサーバーは実行されていません")
-            return True
-            
-        try:
-            # Keep-Aliveスレッドの停止
-            self.stop_flag = True
-            if self.keep_alive_thread:
-                self.keep_alive_thread.join(timeout=1.0)
-                self.keep_alive_thread = None
-            
-            # サーバープロセスの終了
-            self.server_process.terminate()
-            
-            # 終了を待機
+        # キープアライブスレッドの停止
+        if self.keep_alive_thread and self.keep_alive_thread.is_alive():
+            self.running = False
+            self.keep_alive_thread.join(timeout=2)
+            self.keep_alive_thread = None
+        
+        # サーバープロセスの停止
+        if self.server_process:
             try:
-                self.server_process.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                logger.warning("MCPサーバーの終了がタイムアウトしました。強制終了します。")
-                self.server_process.kill()
-            
-            self.server_process = None
-            logger.info("MCPサーバーを停止しました")
-            return True
-        except Exception as e:
-            logger.error(f"MCPサーバー停止エラー: {e}")
+                # まずはAPIで停止を試みる
+                try:
+                    requests.post(f"{self.base_url}/shutdown", timeout=2)
+                    # 少し待機して自然に終了するか確認
+                    time.sleep(2)
+                except:
+                    pass
+                
+                # プロセスが終了したか確認
+                if self.server_process.poll() is None:
+                    # まだ実行中の場合、強制終了
+                    self.server_process.terminate()
+                    self.server_process.wait(timeout=5)
+                
+                logger.info("MCPサーバーを停止しました")
+                self.server_process = None
+                return True
+            except Exception as e:
+                logger.error(f"MCPサーバーの停止中にエラーが発生しました: {e}")
+                return False
+        
+        return True  # サーバーが実行されていない場合も成功として扱う
+    
+    def is_server_running(self) -> bool:
+        """
+        MCPサーバーが実行中かどうかを確認します。
+        
+        Returns:
+            bool: サーバーが実行中であればTrue
+        """
+        # プロセスの状態確認
+        if self.server_process and self.server_process.poll() is None:
+            # APIで動作確認
+            try:
+                response = requests.get(f"{self.base_url}/health", timeout=1)
+                return response.status_code == 200
+            except:
+                return False
+        
+        # サーバーがすでに起動しているか確認（外部で起動されているケース）
+        try:
+            response = requests.get(f"{self.base_url}/health", timeout=1)
+            return response.status_code == 200
+        except:
             return False
     
-    async def generate_text(
-        self, 
-        prompt: str, 
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None
-    ) -> str:
+    def _start_keep_alive_thread(self):
         """
-        テキスト生成を実行
-        
-        Args:
-            prompt: ユーザーからの入力
-            system_prompt: システムプロンプト
-            model: 使用するモデル名
-            
-        Returns:
-            str: 生成されたテキスト
+        サーバーの状態を監視し、必要に応じて再起動するスレッドを開始します。
         """
-        if not self.connected or not self.client:
-            success = await self.connect()
-            if not success:
-                return "MCPサーバーに接続できません"
+        if self.keep_alive_thread and self.keep_alive_thread.is_alive():
+            return  # すでに実行中
         
-        try:
-            # メッセージの構築
-            messages = []
+        def keep_alive():
+            """サーバーの状態を監視するスレッド関数"""
+            check_interval = 30  # 30秒ごとに確認
             
-            # システムプロンプト
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            else:
-                messages.append({"role": "system", "content": "あなたは役立つAIアシスタントです。"})
-            
-            # ユーザープロンプト
-            messages.append({"role": "user", "content": prompt})
-            
-            # 生成パラメータ
-            params = {}
-            if model:
-                params["model"] = model
-            
-            # テキスト生成の実行
-            response = await self.client.generate(messages, **params)
-            
-            # レスポンスの解析
-            if isinstance(response, dict):
-                if "choices" in response and len(response["choices"]) > 0:
-                    # OpenAI形式
-                    return response["choices"][0]["message"]["content"]
-                elif "response" in response:
-                    # カスタム形式
-                    return response["response"]
-                elif "text" in response:
-                    # シンプル形式
-                    return response["text"]
-            
-            # その他の形式
-            return str(response)
-        except Exception as e:
-            logger.error(f"テキスト生成エラー: {e}")
-            return f"エラー: {str(e)}"
+            while self.running:
+                time.sleep(check_interval)
+                
+                # サーバーの状態確認
+                try:
+                    response = requests.get(f"{self.base_url}/health", timeout=2)
+                    if response.status_code != 200:
+                        logger.warning("MCPサーバーが応答しません。再起動を試みます。")
+                        self.stop_server()
+                        time.sleep(1)
+                        self.start_server()
+                except:
+                    logger.warning("MCPサーバーとの接続が失われました。再起動を試みます。")
+                    self.stop_server()
+                    time.sleep(1)
+                    self.start_server()
+        
+        self.running = True
+        self.keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+        self.keep_alive_thread.start()
     
-    async def execute_browser_action(self, action: str, **params) -> Dict[str, Any]:
+    async def get_status(self) -> Dict[str, Any]:
         """
-        ブラウザアクションを実行
+        サーバーの状態を取得します。
+        
+        Returns:
+            Dict[str, Any]: サーバーの状態を表す辞書
+        """
+        try:
+            async with asyncio.timeout(5):  # 5秒のタイムアウト
+                session = requests.Session()
+                response = session.get(f"{self.base_url}/health")
+                if response.status_code == 200:
+                    return {"status": "healthy", "message": "サーバーは正常に動作しています"}
+                else:
+                    return {"status": "unhealthy", "message": f"ステータスコード: {response.status_code}"}
+        except Exception as e:
+            return {"status": "error", "message": f"サーバーとの通信エラー: {str(e)}"}
+    
+    async def generate_text(self, prompt: str, system_prompt: str = None, model: str = None) -> Dict[str, Any]:
+        """
+        テキスト生成リクエストを送信します。
         
         Args:
-            action: 実行するアクション
-            **params: アクションのパラメータ
+            prompt (str): ユーザープロンプト
+            system_prompt (str, optional): システムプロンプト
+            model (str, optional): 使用するモデル名
             
         Returns:
-            Dict[str, Any]: 実行結果
+            Dict[str, Any]: 生成結果を含む辞書
         """
-        if not self.connected or not self.client:
-            success = await self.connect()
-            if not success:
-                return {"status": "error", "message": "MCPサーバーに接続できません"}
+        if not self.connected:
+            if not await self.connect():
+                return {"status": "error", "message": "サーバーに接続されていません"}
         
         try:
-            # ブラウザアクションの実行
-            result = await self.client.execute_browser_action(action, **params)
-            return result
+            url = f"{self.api_url}/generate"
+            payload = {
+                "prompt": prompt,
+                "system_prompt": system_prompt,
+                "model": model
+            }
+            
+            async with asyncio.timeout(60):  # 60秒のタイムアウト
+                session = requests.Session()
+                response = session.post(url, json=payload)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    return {"status": "success", "result": result.get("text", ""), "model": result.get("model")}
+                else:
+                    return {"status": "error", "message": f"APIエラー: {response.status_code} - {response.text}"}
         except Exception as e:
-            logger.error(f"ブラウザアクションエラー ({action}): {e}")
-            return {"status": "error", "message": str(e)}
+            logger.error(f"テキスト生成中にエラーが発生しました: {e}")
+            return {"status": "error", "message": f"エラー: {str(e)}"}
     
     async def navigate(self, url: str) -> Dict[str, Any]:
         """
-        指定URLに移動
+        指定したURLにブラウザを移動させます。
         
         Args:
-            url: 移動先URL
+            url (str): 移動先のURL
             
         Returns:
-            Dict[str, Any]: 実行結果
+            Dict[str, Any]: 操作結果を含む辞書
         """
-        return await self.execute_browser_action("navigate", url=url)
+        if not self.connected:
+            if not await self.connect():
+                return {"status": "error", "message": "サーバーに接続されていません"}
+        
+        try:
+            api_url = f"{self.api_url}/browser/navigate"
+            payload = {"url": url}
+            
+            async with asyncio.timeout(30):  # 30秒のタイムアウト
+                session = requests.Session()
+                response = session.post(api_url, json=payload)
+                
+                if response.status_code == 200:
+                    return {"status": "success", "result": response.json()}
+                else:
+                    return {"status": "error", "message": f"APIエラー: {response.status_code} - {response.text}"}
+        except Exception as e:
+            logger.error(f"ナビゲーション中にエラーが発生しました: {e}")
+            return {"status": "error", "message": f"エラー: {str(e)}"}
     
     async def click(self, selector: str) -> Dict[str, Any]:
         """
-        要素をクリック
+        指定したセレクタの要素をクリックします。
         
         Args:
-            selector: クリックする要素のセレクタ
+            selector (str): クリックする要素のセレクタ
             
         Returns:
-            Dict[str, Any]: 実行結果
+            Dict[str, Any]: 操作結果を含む辞書
         """
-        return await self.execute_browser_action("click", selector=selector)
+        if not self.connected:
+            if not await self.connect():
+                return {"status": "error", "message": "サーバーに接続されていません"}
+        
+        try:
+            api_url = f"{self.api_url}/browser/click"
+            payload = {"selector": selector}
+            
+            async with asyncio.timeout(30):  # 30秒のタイムアウト
+                session = requests.Session()
+                response = session.post(api_url, json=payload)
+                
+                if response.status_code == 200:
+                    return {"status": "success", "result": response.json()}
+                else:
+                    return {"status": "error", "message": f"APIエラー: {response.status_code} - {response.text}"}
+        except Exception as e:
+            logger.error(f"クリック操作中にエラーが発生しました: {e}")
+            return {"status": "error", "message": f"エラー: {str(e)}"}
     
     async def type_text(self, selector: str, text: str) -> Dict[str, Any]:
         """
-        テキストを入力
+        指定したセレクタの要素にテキストを入力します。
         
         Args:
-            selector: 入力対象要素のセレクタ
-            text: 入力するテキスト
+            selector (str): テキストを入力する要素のセレクタ
+            text (str): 入力するテキスト
             
         Returns:
-            Dict[str, Any]: 実行結果
+            Dict[str, Any]: 操作結果を含む辞書
         """
-        return await self.execute_browser_action("type", selector=selector, text=text)
-    
-    async def screenshot(self, path: Optional[str] = None) -> Dict[str, Any]:
-        """
-        スクリーンショットを撮影
+        if not self.connected:
+            if not await self.connect():
+                return {"status": "error", "message": "サーバーに接続されていません"}
         
-        Args:
-            path: 保存先パス
+        try:
+            api_url = f"{self.api_url}/browser/type"
+            payload = {"selector": selector, "text": text}
             
-        Returns:
-            Dict[str, Any]: 実行結果
-        """
-        params = {}
-        if path:
-            params["path"] = path
-        return await self.execute_browser_action("screenshot", **params)
+            async with asyncio.timeout(30):  # 30秒のタイムアウト
+                session = requests.Session()
+                response = session.post(api_url, json=payload)
+                
+                if response.status_code == 200:
+                    return {"status": "success", "result": response.json()}
+                else:
+                    return {"status": "error", "message": f"APIエラー: {response.status_code} - {response.text}"}
+        except Exception as e:
+            logger.error(f"テキスト入力中にエラーが発生しました: {e}")
+            return {"status": "error", "message": f"エラー: {str(e)}"}
     
     async def get_text(self, selector: str) -> Dict[str, Any]:
         """
-        要素のテキストを取得
+        指定したセレクタの要素のテキストを取得します。
         
         Args:
-            selector: テキストを取得する要素のセレクタ
+            selector (str): テキストを取得する要素のセレクタ
             
         Returns:
-            Dict[str, Any]: 実行結果
+            Dict[str, Any]: 取得したテキストを含む辞書
         """
-        return await self.execute_browser_action("get_text", selector=selector)
+        if not self.connected:
+            if not await self.connect():
+                return {"status": "error", "message": "サーバーに接続されていません"}
+        
+        try:
+            api_url = f"{self.api_url}/browser/get_text"
+            payload = {"selector": selector}
+            
+            async with asyncio.timeout(30):  # 30秒のタイムアウト
+                session = requests.Session()
+                response = session.post(api_url, json=payload)
+                
+                if response.status_code == 200:
+                    return {"status": "success", "result": response.json().get("text", "")}
+                else:
+                    return {"status": "error", "message": f"APIエラー: {response.status_code} - {response.text}"}
+        except Exception as e:
+            logger.error(f"テキスト取得中にエラーが発生しました: {e}")
+            return {"status": "error", "message": f"エラー: {str(e)}"}
+    
+    async def evaluate_js(self, code: str) -> Dict[str, Any]:
+        """
+        JavaScriptコードを実行します。
+        
+        Args:
+            code (str): 実行するJavaScriptコード
+            
+        Returns:
+            Dict[str, Any]: 実行結果を含む辞書
+        """
+        if not self.connected:
+            if not await self.connect():
+                return {"status": "error", "message": "サーバーに接続されていません"}
+        
+        try:
+            api_url = f"{self.api_url}/browser/evaluate"
+            payload = {"code": code}
+            
+            async with asyncio.timeout(30):  # 30秒のタイムアウト
+                session = requests.Session()
+                response = session.post(api_url, json=payload)
+                
+                if response.status_code == 200:
+                    return {"status": "success", "result": response.json().get("result", "")}
+                else:
+                    return {"status": "error", "message": f"APIエラー: {response.status_code} - {response.text}"}
+        except Exception as e:
+            logger.error(f"JavaScript実行中にエラーが発生しました: {e}")
+            return {"status": "error", "message": f"エラー: {str(e)}"}
+    
+    async def screenshot(self, path: str = None) -> Dict[str, Any]:
+        """
+        スクリーンショットを撮影します。
+        
+        Args:
+            path (str, optional): スクリーンショットの保存先パス
+            
+        Returns:
+            Dict[str, Any]: スクリーンショットのパスを含む辞書
+        """
+        if not self.connected:
+            if not await self.connect():
+                return {"status": "error", "message": "サーバーに接続されていません"}
+        
+        try:
+            api_url = f"{self.api_url}/browser/screenshot"
+            payload = {}
+            if path:
+                payload["path"] = path
+            
+            async with asyncio.timeout(30):  # 30秒のタイムアウト
+                session = requests.Session()
+                response = session.post(api_url, json=payload)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if "path" in result:
+                        # ファイルとして保存されている場合
+                        return {"status": "success", "result": {"path": result["path"]}}
+                    elif "image" in result:
+                        # Base64画像データが返された場合
+                        if path:
+                            # Base64データをファイルに保存
+                            import base64
+                            img_data = base64.b64decode(result["image"])
+                            with open(path, "wb") as f:
+                                f.write(img_data)
+                            return {"status": "success", "result": {"path": path}}
+                        else:
+                            return {"status": "success", "result": {"image": result["image"]}}
+                    else:
+                        return {"status": "error", "message": "スクリーンショットデータが含まれていません"}
+                else:
+                    return {"status": "error", "message": f"APIエラー: {response.status_code} - {response.text}"}
+        except Exception as e:
+            logger.error(f"スクリーンショット撮影中にエラーが発生しました: {e}")
+            return {"status": "error", "message": f"エラー: {str(e)}"}
     
     async def search_google(self, query: str) -> Dict[str, Any]:
         """
-        Google検索を実行
+        Googleで検索を実行します。
         
         Args:
-            query: 検索クエリ
+            query (str): 検索クエリ
             
         Returns:
-            Dict[str, Any]: 実行結果
+            Dict[str, Any]: 検索結果を含む辞書
         """
-        return await self.execute_browser_action("search_google", query=query)
+        url = f"https://www.google.com/search?q={query}"
+        return await self.navigate(url)
     
     async def search_youtube(self, query: str) -> Dict[str, Any]:
         """
-        YouTube検索を実行
+        YouTubeで検索を実行します。
         
         Args:
-            query: 検索クエリ
+            query (str): 検索クエリ
             
         Returns:
-            Dict[str, Any]: 実行結果
+            Dict[str, Any]: 検索結果を含む辞書
         """
-        return await self.execute_browser_action("search_youtube", query=query)
-    
-    async def get_server_status(self) -> Dict[str, Any]:
-        """
-        サーバーステータスを取得
-        
-        Returns:
-            Dict[str, Any]: サーバーステータス
-        """
-        if not self.connected or not self.client:
-            success = await self.connect()
-            if not success:
-                return {"status": "error", "message": "MCPサーバーに接続できません"}
-        
-        try:
-            return await self.client.get_status()
-        except Exception as e:
-            logger.error(f"ステータス取得エラー: {e}")
-            return {"status": "error", "message": str(e)}
+        url = f"https://www.youtube.com/results?search_query={query}"
+        return await self.navigate(url)
     
     def run_async(self, coro):
         """
-        非同期関数を同期的に実行
+        非同期関数を同期的に実行します。
         
         Args:
             coro: 実行する非同期コルーチン
@@ -428,4 +533,8 @@ class MCPAdapter:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
-        return loop.run_until_complete(coro) 
+        try:
+            return loop.run_until_complete(coro)
+        except Exception as e:
+            logger.error(f"非同期実行中にエラーが発生しました: {e}")
+            return {"status": "error", "message": f"非同期実行エラー: {str(e)}"} 
