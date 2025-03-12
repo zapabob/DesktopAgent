@@ -201,11 +201,6 @@ class CommandInterpreter:
             self.initialize_browser()
             if not self.browser_initialized:
                 return "ブラウザが初期化されていません。"
-                
-        # ブラウザ機能が無効化されている場合
-        if not self.browser and not self.mcp_adapter:
-            logger.info(f"ブラウザ機能が無効化されています。URLへの移動をシミュレート: {url}")
-            return f"URLに移動しました（シミュレーション）: {url}"
         
         try:
             if self.use_mcp and self.mcp_adapter:
@@ -239,11 +234,6 @@ class CommandInterpreter:
             self.initialize_browser()
             if not self.browser_initialized:
                 return "ブラウザが初期化されていません。"
-                
-        # ブラウザ機能が無効化されている場合
-        if not self.browser and not self.mcp_adapter:
-            logger.info(f"ブラウザ機能が無効化されています。クリックをシミュレート: {selector}")
-            return f"要素をクリックしました（シミュレーション）: {selector}"
         
         try:
             if self.use_mcp and self.mcp_adapter:
@@ -285,11 +275,6 @@ class CommandInterpreter:
         
         selector, text = parts
         
-        # ブラウザ機能が無効化されている場合
-        if not self.browser and not self.mcp_adapter:
-            logger.info(f"ブラウザ機能が無効化されています。テキスト入力をシミュレート: {selector} -> {text}")
-            return f"テキストを入力しました（シミュレーション）: {selector} -> {text}"
-        
         try:
             if self.use_mcp and self.mcp_adapter:
                 # MCPを使用してテキスト入力
@@ -320,11 +305,6 @@ class CommandInterpreter:
             if not self.browser_initialized:
                 return "ブラウザが初期化されていません。"
         
-        # ブラウザ機能が無効化されている場合
-        if not self.browser and not self.mcp_adapter:
-            logger.info("ブラウザ機能が無効化されています。スクリーンショットをシミュレート")
-            return "スクリーンショットを撮影しました（シミュレーション）"
-            
         try:
             screenshot_path = f"screenshot_{int(time.time())}.png"
             
@@ -360,11 +340,6 @@ class CommandInterpreter:
             if not self.browser_initialized:
                 return "ブラウザが初期化されていません。"
         
-        # ブラウザ機能が無効化されている場合
-        if not self.browser and not self.mcp_adapter:
-            logger.info(f"ブラウザ機能が無効化されています。テキスト取得をシミュレート: {selector}")
-            return f"テキスト（シミュレーション）: 要素 {selector} のテキスト"
-            
         try:
             if self.use_mcp and self.mcp_adapter:
                 # MCPを使用してテキスト取得
@@ -398,11 +373,6 @@ class CommandInterpreter:
             if not self.browser_initialized:
                 return "ブラウザが初期化されていません。"
         
-        # ブラウザ機能が無効化されている場合
-        if not self.browser and not self.mcp_adapter:
-            logger.info(f"ブラウザ機能が無効化されています。JavaScript実行をシミュレート: {code[:50]}...")
-            return f"JavaScript実行（シミュレーション）: {code[:50]}..."
-            
         try:
             if self.use_mcp and self.mcp_adapter:
                 # MCPを使用してJavaScript実行
@@ -463,12 +433,6 @@ class CommandInterpreter:
         if self.browser_initialized:
             logger.info("ブラウザは既に初期化されています。")
             return
-            
-        # 一時的にブラウザ初期化をスキップ
-        logger.info("ブラウザ初期化をスキップします。browser-useの設定が必要です。")
-        # 初期化されたものとして扱い、エラーを回避
-        self.browser_initialized = True
-        return
         
         try:
             if self.use_mcp and self.mcp_adapter:
@@ -484,8 +448,7 @@ class CommandInterpreter:
             
             # MCPが使用できないか、接続に失敗した場合は従来の方法で初期化
             try:
-                # browser-useからActionModelをインポート
-                from browser_use import ActionModel
+                from browser_use import Browser
                 import asyncio
                 
                 # 非同期関数を定義
@@ -493,16 +456,16 @@ class CommandInterpreter:
                     try:
                         logger.info("ブラウザを初期化中...")
                         
-                        # ActionModelインスタンスを作成
-                        self.browser = ActionModel()
+                        # Browserインスタンスを作成
+                        self.browser = Browser()
                         
-                        # 初期ページを開く
+                        # ページを開く
                         await self.browser.navigate("about:blank")
                         
-                        # ブラウザメソッドを設定
+                        # メソッドの存在を確認し、存在する場合は辞書に追加
                         self.browser_methods['navigate'] = self.browser.navigate
                         self.browser_methods['click'] = self.browser.click
-                        self.browser_methods['type'] = self.browser.type_text
+                        self.browser_methods['type'] = self.browser.type
                         self.browser_methods['screenshot'] = self.browser.screenshot
                         self.browser_methods['get_text'] = self.browser.get_text
                         self.browser_methods['evaluate'] = self.browser.evaluate

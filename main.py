@@ -36,27 +36,38 @@ from src.agent.command_interpreter import CommandInterpreter
 from src.db.models import DatabaseManager
 
 def main():
-    load_dotenv()
-    # データベースの初期化
-    db_manager = DatabaseManager()
-    db_manager.initialize_database()
-    
-    # アプリケーションの初期化
-    app = QApplication(sys.argv)
-    
-    # エージェントとインタープリタの初期化
-    agent = AutonomousAgent(db_manager.get_logger())
-    interpreter = CommandInterpreter()
-    
-    # システム情報の初期化
-    system = wmi.WMI()
-    
-    # メインウィンドウの作成と表示
-    window = MainWindow(agent, interpreter, system)
-    window.show()
-    
-    # アプリケーションの実行
-    return app.exec()
+    try:
+        load_dotenv()
+        # データベースの初期化
+        db_manager = DatabaseManager()
+        db_manager.initialize_database()
+        
+        # アプリケーションの初期化
+        app = QApplication(sys.argv)
+        
+        # エージェントとインタープリタの初期化
+        agent = AutonomousAgent(db_manager.get_logger())
+        interpreter = CommandInterpreter()
+        
+        # システム情報の初期化
+        try:
+            system = wmi.WMI()
+        except Exception as e:
+            logging.error(f"WMI初期化エラー: {e}")
+            system = None
+        
+        # メインウィンドウの作成と表示
+        window = MainWindow(agent, interpreter, system)
+        window.show()
+        logging.info("ウィンドウを表示しました")
+        
+        # アプリケーションの実行
+        return app.exec()
+    except Exception as e:
+        logging.error(f"アプリケーション起動エラー: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return 1
 
 if __name__ == '__main__':
     sys.exit(main())
