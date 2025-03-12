@@ -1,14 +1,15 @@
 # AI Provider Settings
+# 注意: 複数のプロバイダーを有効にする場合、優先順位は Vertex AI > OpenAI > Anthropic
 ai_providers:
-  use_vertexai: true
-  use_openai: false
-  use_anthropic: false
+  use_vertexai: true   # Google AI (Gemini Pro)
+  use_openai: false    # OpenAI (GPT-4)
+  use_anthropic: false # Anthropic (Claude)
 
 # System Settings
 system_settings:
   cpu_threshold: 80
   memory_threshold: 85
-  gpu_threshold: 80
+  gpu_threshold: 90
   log_level: INFO
   metrics_update_interval: 1
   resource_check_interval: 5
@@ -62,6 +63,7 @@ model:
   learning_rate: 0.001
   max_epochs: 100
 
+# Browser Settings
 browser_paths:
   edge: 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-  chrome: 'C:\Program Files\Google\Chrome\Application\chrome.exe' 
+  chrome: 'C:\Program Files\Google\Chrome\Application\chrome.exe'

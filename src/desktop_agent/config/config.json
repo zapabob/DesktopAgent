@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 {
     "permissions": {
         "db_path": "data/permissions.db",
@@ -50,4 +51,58 @@
         "token_expiry": 3600,
         "max_retries": 3
     }
+=======
+{
+    "permissions": {
+        "db_path": "data/permissions.db",
+        "allowed_directories": [
+            "C:/Users/Public/Documents",
+            "C:/Users/Public/Downloads"
+        ],
+        "allowed_protocols": [
+            "http",
+            "https"
+        ],
+        "allowed_domains": [
+            "github.com",
+            "google.com",
+            "microsoft.com"
+        ],
+        "allowed_applications": [
+            "chrome.exe",
+            "msedge.exe",
+            "notepad.exe"
+        ]
+    },
+    "system": {
+        "cpu_threshold": 80,
+        "memory_threshold": 85,
+        "rate_limit": {
+            "requests_per_minute": 60,
+            "concurrent_tasks": 5
+        }
+    },
+    "ai": {
+        "default_model": "gpt-4",
+        "temperature": 0.7,
+        "max_tokens": 2000,
+        "cache_ttl": 3600
+    },
+    "logging": {
+        "level": "INFO",
+        "file_path": "logs/desktop_agent.log",
+        "max_size": 10485760,
+        "backup_count": 5
+    },
+    "database": {
+        "path": "data/agent.db",
+        "pool_size": 5,
+        "timeout": 30
+    },
+    "security": {
+        "encryption_key": "YOUR_ENCRYPTION_KEY",
+        "token_expiry": 3600,
+        "max_retries": 3
+    }
+>>>>>>> 42de7d643d987d98855d441372a3931e7de31809
 } 

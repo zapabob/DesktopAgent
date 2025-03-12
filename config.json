@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 {
     "agents": [
         {
@@ -44,4 +45,52 @@
             "notepad.exe"
         ]
     }
+=======
+{
+    "agents": [
+        {
+            "id": "main_agent",
+            "type": "autonomous",
+            "model": "gemini-pro",
+            "max_tokens": 2000,
+            "temperature": 0.7,
+            "rate_limit": {
+                "requests": 60,
+                "period": 60
+            }
+        }
+    ],
+    "system_settings": {
+        "cpu_threshold": 80,
+        "memory_threshold": 85,
+        "requests_per_minute": 60,
+        "concurrent_tasks": 5
+    },
+    "logging_settings": {
+        "level": "INFO",
+        "file_path": "logs/desktop_agent.log",
+        "max_size": 10485760,
+        "backup_count": 5
+    },
+    "security_settings": {
+        "encryption_key": "your_encryption_key_here",
+        "token_expiry": 3600,
+        "max_retries": 3,
+        "allowed_directories": [
+            "C:/Users/Public/Downloads",
+            "C:/Users/Public/Documents"
+        ],
+        "allowed_protocols": ["http", "https"],
+        "allowed_domains": [
+            "github.com",
+            "google.com",
+            "microsoft.com"
+        ],
+        "allowed_applications": [
+            "chrome.exe",
+            "msedge.exe",
+            "notepad.exe"
+        ]
+    }
+>>>>>>> 42de7d643d987d98855d441372a3931e7de31809
 } 

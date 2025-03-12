@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, 
     QTextEdit, QLineEdit, QPushButton, QLabel, QTabWidget, QTableWidget,
     QTableWidgetItem, QHeaderView, QHBoxLayout, QProgressBar, QSystemTrayIcon, QMenu, QDialog,
-    QSpinBox)
+    QSpinBox, QGroupBox, QComboBox, QMessageBox)
 from PyQt6.QtCore import Qt, pyqtSlot, QTimer, QUrl
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtGui import QIcon, QAction
@@ -117,7 +117,72 @@ class MainWindow(QMainWindow):
         execute_button.clicked.connect(self.execute_command)
         layout.addWidget(execute_button)
         
-        tab.setLayout(layout)
+        # ブラウザセクションを追加
+        browser_group = QGroupBox("ブラウザ操作")
+        browser_layout = QVBoxLayout()
+        
+        # URL入力フォーム
+        url_layout = QHBoxLayout()
+        url_layout.addWidget(QLabel("URL:"))
+        self.url_input = QLineEdit()
+        self.url_input.setPlaceholderText("https://example.com")
+        url_layout.addWidget(self.url_input)
+        
+        # ブラウザ選択
+        browser_selector_layout = QHBoxLayout()
+        browser_selector_layout.addWidget(QLabel("ブラウザ:"))
+        self.browser_selector = QComboBox()
+        
+        # 利用可能なブラウザを取得
+        try:
+            available_browsers = self.command_interpreter.get_available_browsers()
+            self.browser_selector.addItems(available_browsers)
+            if not available_browsers:
+                self.browser_selector.addItem("デフォルト")
+        except Exception as e:
+            self.logger.error(f"ブラウザリスト取得エラー: {e}")
+            self.browser_selector.addItem("デフォルト")
+        
+        browser_selector_layout.addWidget(self.browser_selector)
+        
+        # 操作ボタン
+        browser_buttons_layout = QHBoxLayout()
+        
+        open_url_btn = QPushButton("URLを開く")
+        open_url_btn.clicked.connect(self.open_url)
+        
+        search_google_btn = QPushButton("Google検索")
+        search_google_btn.clicked.connect(self.search_google)
+        
+        youtube_btn = QPushButton("YouTube検索")
+        youtube_btn.clicked.connect(self.play_youtube)
+        
+        gmail_btn = QPushButton("Gmail")
+        gmail_btn.clicked.connect(self.open_gmail)
+        
+        calendar_btn = QPushButton("カレンダー")
+        calendar_btn.clicked.connect(self.open_calendar)
+        
+        browser_buttons_layout.addWidget(open_url_btn)
+        browser_buttons_layout.addWidget(search_google_btn)
+        browser_buttons_layout.addWidget(youtube_btn)
+        browser_buttons_layout.addWidget(gmail_btn)
+        browser_buttons_layout.addWidget(calendar_btn)
+        
+        # レイアウトをグループに追加
+        browser_layout.addLayout(url_layout)
+        browser_layout.addLayout(browser_selector_layout)
+        browser_layout.addLayout(browser_buttons_layout)
+        browser_group.setLayout(browser_layout)
+        
+        # メインレイアウトに追加
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(browser_group)
+        main_layout.addWidget(self.log_display)
+        main_layout.addWidget(self.command_input)
+        main_layout.addWidget(execute_button)
+        
+        tab.setLayout(main_layout)
         return tab
     
     def _create_commands_tab(self):
@@ -344,10 +409,80 @@ class MainWindow(QMainWindow):
             self.task_table.removeRow(current_row)
             
     def play_youtube(self):
-        url = self.url_edit.text()
-        if "youtube.com" in url or "youtu.be" in url:
-            self.web_view.setUrl(QUrl(url))
-            
+        """YouTubeで検索・再生する"""
+        query = self.url_input.text().strip()
+        if not query:
+            QMessageBox.warning(self, "入力エラー", "検索するキーワードを入力してください")
+            return
+        
+        selected_browser = self.browser_selector.currentText() if self.browser_selector.count() > 0 else None
+        
+        # コマンドインタープリタを使用してYouTube検索を実行
+        command_text = f"YouTubeで {query} を検索"
+        self.logger.info(f"実行コマンド: {command_text}")
+        success = self.command_interpreter.execute_command(command_text)
+        
+        if not success:
+            QMessageBox.warning(self, "実行エラー", f"YouTubeでの検索に失敗しました: {query}")
+
+    def open_url(self):
+        """URLをブラウザで開く"""
+        url = self.url_input.text().strip()
+        if not url:
+            QMessageBox.warning(self, "入力エラー", "URLを入力してください")
+            return
+        
+        # スキームがない場合は追加
+        if not url.startswith(('http://', 'https://')):
+            url = f"https://{url}"
+        
+        selected_browser = self.browser_selector.currentText() if self.browser_selector.count() > 0 else None
+        
+        # コマンドインタープリタを使用してURLを開く
+        command_text = f"ブラウザで {url} を開く"
+        self.logger.info(f"実行コマンド: {command_text}")
+        success = self.command_interpreter.execute_command(command_text)
+        
+        if not success:
+            QMessageBox.warning(self, "実行エラー", f"URLを開けませんでした: {url}")
+
+    def search_google(self):
+        """Googleで検索する"""
+        query = self.url_input.text().strip()
+        if not query:
+            QMessageBox.warning(self, "入力エラー", "検索するキーワードを入力してください")
+            return
+        
+        selected_browser = self.browser_selector.currentText() if self.browser_selector.count() > 0 else None
+        
+        # コマンドインタープリタを使用してGoogle検索を実行
+        command_text = f"Googleで {query} を検索"
+        self.logger.info(f"実行コマンド: {command_text}")
+        success = self.command_interpreter.execute_command(command_text)
+        
+        if not success:
+            QMessageBox.warning(self, "実行エラー", f"Googleでの検索に失敗しました: {query}")
+
+    def open_gmail(self):
+        """Gmailを開く"""
+        # コマンドインタープリタを使用してGmailを開く
+        command_text = "Gmailを開く"
+        self.logger.info(f"実行コマンド: {command_text}")
+        success = self.command_interpreter.execute_command(command_text)
+        
+        if not success:
+            QMessageBox.warning(self, "実行エラー", "Gmailを開けませんでした")
+
+    def open_calendar(self):
+        """Googleカレンダーを開く"""
+        # コマンドインタープリタを使用してカレンダーを開く
+        command_text = "カレンダーを開く"
+        self.logger.info(f"実行コマンド: {command_text}")
+        success = self.command_interpreter.execute_command(command_text)
+        
+        if not success:
+            QMessageBox.warning(self, "実行エラー", "カレンダーを開けませんでした")
+
     def closeEvent(self, event):
         self.hide()
         event.ignore() 
