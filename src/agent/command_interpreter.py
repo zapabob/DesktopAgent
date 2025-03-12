@@ -47,6 +47,51 @@ class CommandInterpreter:
             (r'(音|サウンド)(を)?(ミュート|消す)', self._mute),
         ]
 
+    def interpret(self, command: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+        """
+        コマンドを解釈して、コマンドタイプとパラメータを返す
+        
+        Args:
+            command (str): 解釈するコマンド文字列
+            
+        Returns:
+            Optional[Tuple[str, Dict[str, Any]]]: コマンドタイプとパラメータのタプル、
+            または解釈できない場合はNone
+        """
+        for pattern, handler in self.command_patterns:
+            match = re.search(pattern, command, re.IGNORECASE)
+            if match:
+                try:
+                    result = handler(match)
+                    if result:
+                        command_type, params = result
+                        return command_type, params
+                except Exception as e:
+                    self.logger.error(f"コマンド解釈エラー: {e}")
+                    return None
+        
+        # デフォルトのコマンド解釈ロジック
+        # ブラウザコマンド
+        if re.search(r'(edge|chrome|firefox|ブラウザ)\s+(https?://.+)', command, re.IGNORECASE):
+            match = re.search(r'(edge|chrome|firefox|ブラウザ)\s+(https?://.+)', command, re.IGNORECASE)
+            browser = match.group(1).lower()
+            url = match.group(2).strip()
+            return 'browser', {'browser': browser, 'url': url}
+            
+        # 最小化コマンド
+        if re.search(r'(.+)を?(最小化|最小化して)', command):
+            match = re.search(r'(.+)を?(最小化|最小化して)', command)
+            window = match.group(1).strip()
+            return 'minimize', {'window': window}
+            
+        # アプリケーション起動コマンド
+        if re.search(r'(.+)を?(起動|開いて|実行して)', command):
+            match = re.search(r'(.+)を?(起動|開いて|実行して)', command)
+            app = match.group(1).strip()
+            return 'launch', {'app': app}
+            
+        return None
+
     def start_monitoring(self):
         """キーボードの監視を開始"""
         self.keyboard_monitor.start(self._on_key_press)
@@ -336,3 +381,47 @@ class CommandInterpreter:
                 pass
             finally:
                 self.browser_loop = None
+
+    def _open_browser(self, match):
+        """ブラウザを開くコマンドを処理"""
+        url = match.group(3).strip()
+        return 'browser', {'browser': 'default', 'url': url}
+        
+    def _search_youtube(self, match):
+        """YouTubeで検索するコマンドを処理"""
+        query = match.group(3).strip()
+        return 'youtube', {'query': query}
+        
+    def _search_google(self, match):
+        """Googleで検索するコマンドを処理"""
+        query = match.group(3).strip()
+        return 'google', {'query': query}
+        
+    def _open_gmail(self, match):
+        """Gmailを開くコマンドを処理"""
+        return 'gmail', {}
+        
+    def _open_calendar(self, match):
+        """Googleカレンダーを開くコマンドを処理"""
+        return 'calendar', {}
+        
+    def _click_element(self, match):
+        """ブラウザ要素をクリックするコマンドを処理"""
+        element = match.group(3).strip()
+        return 'click_element', {'element': element}
+        
+    def _take_screenshot(self, match):
+        """スクリーンショットを撮るコマンドを処理"""
+        return 'screenshot', {}
+        
+    def _volume_up(self, match):
+        """音量を上げるコマンドを処理"""
+        return 'volume', {'action': 'up'}
+        
+    def _volume_down(self, match):
+        """音量を下げるコマンドを処理"""
+        return 'volume', {'action': 'down'}
+        
+    def _mute(self, match):
+        """ミュートするコマンドを処理"""
+        return 'volume', {'action': 'mute'}
