@@ -33,6 +33,7 @@ class CommandInterpreter:
             # ブラウザ関連コマンド
             (r'(ブラウザ|browser)(\s*で|\s*を)?(.+)(を)?(開く|開いて|見る|表示)', self._open_browser),
             (r'(youtube|ユーチューブ)(\s*で|\s*を)?(.+)(を)?(検索|見る|開く|再生)', self._search_youtube),
+            (r'(youtube|ユーチューブ)(を)?(開く|開いて|見る|表示)', self._open_youtube),
             (r'(google|グーグル)(\s*で|\s*を)?(.+)(を)?(検索|調べる)', self._search_google),
             (r'(gmail|メール)(を)?(開く|開いて|見る|表示)', self._open_gmail),
             (r'(カレンダー|calendar)(を)?(開く|開いて|見る|表示)', self._open_calendar),

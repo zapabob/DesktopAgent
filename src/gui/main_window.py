@@ -13,6 +13,7 @@ import GPUtil
 import wmi
 import threading
 import os
+from pathlib import Path
 
 class TaskDialog(QDialog):
     def __init__(self, parent=None):
@@ -424,13 +425,20 @@ class MainWindow(QMainWindow):
             
             def run_browser():
                 async def navigate():
-                    browser = Browser(headless=False)
-                    await browser.navigate("https://www.google.com")
-                    # ブラウザは自動的に閉じず、開いたままにする
+                    try:
+                        # headlessパラメータを削除し、デフォルト設定を使用
+                        browser = Browser()
+                        await browser.navigate("https://www.google.com")
+                        # ブラウザは自動的に閉じず、開いたままにする
+                    except Exception as e:
+                        self.log(f"ブラウザ起動エラー: {e}", logging.ERROR)
                 
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                loop.run_until_complete(navigate())
+                try:
+                    loop.run_until_complete(navigate())
+                except Exception as e:
+                    self.log(f"ブラウザ実行エラー: {e}", logging.ERROR)
             
             # 別スレッドで実行
             thread = threading.Thread(target=run_browser)
@@ -487,13 +495,25 @@ class MainWindow(QMainWindow):
     def setup_system_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
         
-        # アイコンファイルの存在チェック
-        icon_path = "icon.png"
-        if os.path.exists(icon_path):
-            self.tray_icon.setIcon(QIcon(icon_path))
-        else:
+        # アイコンファイルの検索
+        project_root = Path(__file__).resolve().parent.parent.parent
+        icon_paths = [
+            "icon.png",  # 現在のディレクトリ
+            os.path.join(project_root, "icon.png"),  # プロジェクトルート
+            os.path.join(project_root, "src", "assets", "icon.png"),  # アセットフォルダ
+            os.path.join(project_root, "assets", "icon.png"),  # アセットフォルダ
+        ]
+        
+        icon_found = False
+        for icon_path in icon_paths:
+            if os.path.exists(icon_path):
+                self.tray_icon.setIcon(QIcon(icon_path))
+                icon_found = True
+                break
+                
+        if not icon_found:
             # アイコンがない場合はデフォルトアイコンを使用
-            self.logger.warning("アイコンファイルが見つかりません: " + icon_path)
+            self.logger.warning("アイコンファイルが見つかりません: icon.png")
             # PyQt6のデフォルトアイコンを使用
             self.tray_icon.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_ComputerIcon))
         
