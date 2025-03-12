@@ -753,8 +753,9 @@ class CommandInterpreter:
                             await self.browser.close()
                         elif hasattr(self.browser, 'shutdown'):
                             await self.browser.shutdown()
-                        logger.info("ブラウザを閉じました。")
-        except Exception as e:
+                        else:
+                            logger.warning("ブラウザの閉じ方がわかりません。")
+                    except Exception as e:
                         logger.error(f"ブラウザを閉じる際にエラーが発生しました: {e}")
                 
                 # 非同期関数を実行
