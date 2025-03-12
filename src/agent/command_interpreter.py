@@ -12,7 +12,14 @@ import asyncio
 
 from .keyboard_monitor import KeyboardMonitor
 from src.desktop.browser_controller import BrowserController
-from browser_use import Browser
+
+# browser_useのインポートを試行
+try:
+    from browser-use import Browser
+    BROWSER_USE_AVAILABLE = True
+except ImportError:
+    BROWSER_USE_AVAILABLE = False
+    logging.getLogger(__name__).warning("browser-useパッケージがインポートできません。一部の機能が制限されます。")
 
 class CommandInterpreter:
     def __init__(self):
@@ -120,13 +127,21 @@ class CommandInterpreter:
 
     def initialize_browser(self):
         """browser-useのブラウザを初期化"""
+        if not BROWSER_USE_AVAILABLE:
+            self.logger.warning("browser-useが利用できないため、従来のブラウザコントローラーを使用します")
+            return False
+            
         if self.browser is None:
             self.browser_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.browser_loop)
             
             def init_browser():
-                self.browser = Browser(headless=False)
-                self.logger.info("browser-useブラウザインスタンスを初期化しました")
+                try:
+                    self.browser = Browser()
+                    self.logger.info("browser-useブラウザインスタンスを初期化しました")
+                except Exception as e:
+                    self.logger.error(f"browser-useブラウザの初期化に失敗しました: {e}")
+                    return False
             
             # 非同期で初期化を実行
             if threading.current_thread() is threading.main_thread():
@@ -134,6 +149,7 @@ class CommandInterpreter:
             else:
                 # 別スレッドから呼ばれた場合
                 threading.Thread(target=lambda: self.browser_loop.run_until_complete(init_browser())).start()
+        return True
 
     def parse_command(self, command_text: str) -> Tuple[bool, str]:
         """
@@ -167,10 +183,17 @@ class CommandInterpreter:
     
     def _run_browser_async(self, coro):
         """browser-useの非同期関数を実行するヘルパーメソッド"""
-        self.initialize_browser()
+        if not BROWSER_USE_AVAILABLE:
+            self.logger.warning("browser-useが利用できないため、従来のコントローラーを使用します")
+            return False
+            
+        browser_initialized = self.initialize_browser()
+        if not browser_initialized or self.browser is None:
+            return False
         
         # 実行するコルーチン
         async def run_and_return():
+            
             try:
                 return await coro
             except Exception as e:
@@ -182,6 +205,7 @@ class CommandInterpreter:
             return self.browser_loop.run_until_complete(run_and_return())
         else:
             # 別スレッドの場合は結果を受け取るための仕組みを作る
+            # 結果を受け取るためのリストを作成
             result = [None]
             def run_async():
                 result[0] = self.browser_loop.run_until_complete(run_and_return())

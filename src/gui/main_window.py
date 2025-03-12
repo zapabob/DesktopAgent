@@ -418,7 +418,13 @@ class MainWindow(QMainWindow):
     def launch_browser(self):
         """ブラウザを起動する"""
         try:
-            from browser_use import Browser
+            # browser_useパッケージのインポートを試行
+            try:
+                from browser_use import Browser
+            except ImportError:
+                self.log("browser_useパッケージが見つかりません。pip install browser-useでインストールしてください。", logging.ERROR)
+                return
+
             # 非同期関数なので、簡単なURLを開くだけにする
             import asyncio
             import threading
