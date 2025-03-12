@@ -1,15 +1,16 @@
 @echo off
 setlocal
+chcp 65001 > nul
 
 :: Pythonの仮想環境が存在しない場合は作成
 if not exist ".venv" (
     echo 仮想環境を作成中...
     python -m venv .venv
-    call .venv\Scripts\activate
+    call .venv\Scripts\activate.bat
     python -m pip install --upgrade pip
     pip install -r requirements.txt
 ) else (
-    call .venv\Scripts\activate
+    call .venv\Scripts\activate.bat
 )
 
 :: アプリケーションの起動

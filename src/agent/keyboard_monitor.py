@@ -2,8 +2,8 @@ import keyboard
 import logging
 from typing import List, Optional, Callable
 import time
-from threading import Thread, Event
 import threading
+from threading import Event
 
 class KeyboardMonitor:
     def __init__(self):
@@ -33,22 +33,38 @@ class KeyboardMonitor:
         self._is_running = False
         self.stop_event.set()
         if self._thread:
-            self._thread.join(timeout=1.0)  # 1秒でタイムアウト
+            try:
+                self._thread.join(timeout=1.0)  # タイムアウト設定で無限ブロック防止
+            except Exception as e:
+                self.logger.error(f"スレッド終了エラー: {e}")
             self._thread = None
     
     def _monitor_loop(self):
         """Main monitoring loop"""
-        while self._is_running:
-            try:
+        try:
+            while self._is_running and not self.stop_event.is_set():
                 event = keyboard.read_event()
                 if event.event_type == keyboard.KEY_DOWN:
                     with self._buffer_lock:
                         self._buffer.append(event.name)
                         if self._callback:
                             self._callback(event.name)
-            except Exception as e:
-                self.logger.error(f"キーボード監視ループエラー: {e}")
-            time.sleep(0.01)  # Small delay to prevent high CPU usage
+                    
+                    # 記録モード時の処理
+                    if self.recording:
+                        key_event = {
+                            'key': event.name,
+                            'time': time.time()
+                        }
+                        self.key_events.append(key_event)
+                        self.logger.debug(f"キー入力: {event.name}")
+                        
+                        if hasattr(self, 'callback') and self.callback:
+                            self.callback(key_event)
+                            
+                time.sleep(0.01)  # CPU負荷軽減
+        except Exception as e:
+            self.logger.error(f"キーボード監視エラー: {e}")
     
     def get_buffer(self):
         """Get and clear the current buffer"""
@@ -69,27 +85,6 @@ class KeyboardMonitor:
         """キーボード操作の記録を停止して記録を返す"""
         self.recording = False
         return self.key_events
-    
-    def run(self):
-        """キーボード操作の監視を実行"""
-        try:
-            while not self.stop_event.is_set():
-                if self.recording:
-                    event = keyboard.read_event()
-                    if event.event_type == 'down':
-                        key_event = {
-                            'key': event.name,
-                            'time': time.time()
-                        }
-                        self.key_events.append(key_event)
-                        self.logger.debug(f"キー入力: {event.name}")
-                        
-                        if self.callback:
-                            self.callback(key_event)
-                time.sleep(0.01)  # CPU負荷軽減
-                
-        except Exception as e:
-            self.logger.error(f"キーボード監視エラー: {e}")
     
     def replay_events(self, events: List[dict], speed: float = 1.0):
         """記録したキーボード操作を再生"""
