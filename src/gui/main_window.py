@@ -433,27 +433,47 @@ class MainWindow(QMainWindow):
 
     def launch_browser(self):
         """ブラウザユーザーインターフェースの初期化を行います"""
-        self.log("ブラウザを起動しようとしています...")
-        
-        # browser-useの初期化を一時的に無効化
-        self.log("browser-useの初期化をスキップします。必要に応じて管理者に連絡してください。")
-        return
+        self.log("ブラウザを起動しています...")
         
         try:
-            from browser_use import ActionModel
+            # Google AI APIキーの確認
+            google_api_key = os.environ.get("GOOGLE_API_KEY")
+            if not google_api_key:
+                self.log("GOOGLE_API_KEY環境変数が設定されていません。APIキーをセットしてください。", logging.WARNING)
+            
+            from browser_use import Agent, ActionModel
             import asyncio
             import threading
             
             def run_browser():
                 async def navigate():
                     try:
-                        # ActionModelを使用して初期化
-                        browser = ActionModel()
-                        # 直接navigateメソッドを使用
+                        self.log("ブラウザを初期化中...")
+                        
+                        # Google AI APIキーをチェック
+                        if not google_api_key:
+                            # ActionModelを直接使用（AIなし）
+                            self.log("AIなしでブラウザを初期化します。")
+                            browser = ActionModel()
+                        else:
+                            # Google AI APIを使用
+                            self.log("Google AIを使用してブラウザを初期化します。")
+                            from langchain_google_genai import ChatGoogleGenerativeAI
+                            agent_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+                            agent = Agent(
+                                task="Webブラウザを操作して指示に従います",
+                                llm=agent_llm
+                            )
+                            browser = agent.action_model
+                        
+                        # Googleホームページに移動
+                        self.log("Googleホームページを開きます...")
                         await browser.navigate("https://www.google.com")
-                        # ブラウザは自動的に閉じず、開いたままにする
+                        self.log("ブラウザが正常に初期化されました。")
                     except Exception as e:
                         self.log(f"ブラウザ起動エラー: {e}", logging.ERROR)
+                        import traceback
+                        self.log(traceback.format_exc(), logging.ERROR)
                 
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -466,10 +486,14 @@ class MainWindow(QMainWindow):
             thread = threading.Thread(target=run_browser)
             thread.daemon = True
             thread.start()
+            self.log("ブラウザ起動スレッドを開始しました。")
         except ImportError as e:
-            self.log(f"browser-useパッケージがインストールされていない可能性があります: {e}", logging.ERROR)
+            self.log(f"browser-useパッケージがインストールされていません: {e}", logging.ERROR)
+            self.log("pip install browser-use playwrightでインストールしてください。", logging.INFO)
         except Exception as e:
             self.log(f"ブラウザの起動中にエラーが発生しました: {e}", logging.ERROR)
+            import traceback
+            self.log(traceback.format_exc(), logging.ERROR)
 
     def on_tab_changed(self, index):
         """タブが変更されたときの処理"""

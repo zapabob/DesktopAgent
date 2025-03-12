@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
+import urllib.parse
 
 # MCPアダプタのインポート
 try:
@@ -96,7 +97,7 @@ class CommandInterpreter:
         def get_model(model_name: str) -> BaseLanguageModel:
             try:
                 if model_name == "gemini-pro":
-                    return ChatGoogleGenerativeAI(model_name="gemini-2.0-flash", google_api_key=os.environ.get("GOOGLE_API_KEY"))
+                    return ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=os.environ.get("GOOGLE_API_KEY"))
                 elif model_name == "gpt-4omini":
                     return ChatOpenAI(model="gpt-4omini", api_key=os.environ.get("OPENAI_API_KEY"))
                 elif model_name == "claude-sonnet":
@@ -420,7 +421,7 @@ class CommandInterpreter:
         except Exception as e:
             logger.error(f"JavaScript実行エラー: {e}")
             return f"エラー: {str(e)}"
-
+        
     def _control_with_llm(self, match, command_text: str) -> Tuple[bool, str]:
         """
         LLMを使用してブラウザを制御します。
@@ -456,77 +457,235 @@ class CommandInterpreter:
             logger.error(f"LLMによるブラウザ制御エラー: {e}")
             return False, f"ブラウザ制御中にエラーが発生しました: {str(e)}"
 
-    def initialize_browser(self):
+    def execute_command(self, command: str) -> bool:
         """
-        ブラウザを初期化します。
-        """
-        if self.browser_initialized:
-            logger.info("ブラウザは既に初期化されています。")
-            return
+        ユーザーコマンドを実行します。
+        
+        Args:
+            command (str): 実行するコマンド
             
-        # 一時的にブラウザ初期化をスキップ
-        logger.info("ブラウザ初期化をスキップします。browser-useの設定が必要です。")
-        # 初期化されたものとして扱い、エラーを回避
-        self.browser_initialized = True
-        return
+        Returns:
+            bool: コマンドが成功したかどうか
+        """
+        logger.info(f"コマンド実行: {command}")
         
         try:
-            if self.use_mcp and self.mcp_adapter:
-                # MCPサーバーの起動
-                if self.mcp_adapter.start_server():
-                    # 接続を試行
-                    if self.mcp_adapter.run_async(self.mcp_adapter.connect()):
-                        self.browser_initialized = True
-                        logger.info("MCPサーバー経由でブラウザを初期化しました。")
-                        return
-                    else:
-                        logger.error("MCPサーバーへの接続に失敗しました。")
+            # ブラウザ関連コマンドのパターン
+            browser_patterns = [
+                (re.compile(r"ブラウザ[でに](.+?)を開[いくけ]", re.IGNORECASE), self._navigate_url),
+                (re.compile(r"(.+?)を検索", re.IGNORECASE), self._search_google),
+                (re.compile(r"YouTube[でに](.+?)を検索", re.IGNORECASE), self._search_youtube),
+                (re.compile(r"Gmail.*開[いくけ]", re.IGNORECASE), lambda m, c: self._navigate_url(m, "https://mail.google.com")),
+                (re.compile(r"カレンダー.*開[いくけ]", re.IGNORECASE), lambda m, c: self._navigate_url(m, "https://calendar.google.com")),
+            ]
             
-            # MCPが使用できないか、接続に失敗した場合は従来の方法で初期化
-            try:
-                # browser-useからActionModelをインポート
-                from browser_use import ActionModel
-                import asyncio
+            # ブラウザコマンドの検出と実行
+            for pattern, handler in browser_patterns:
+                match = pattern.search(command)
+                if match:
+                    success, message = handler(match, command)
+                    logger.info(f"コマンド実行結果: {message}")
+                    return success
+            
+            # LLMを使用したブラウザ制御
+            if "AI" in command and ("ブラウザ" in command or "検索" in command):
+                success, message = self._control_with_llm(None, command)
+                logger.info(f"LLMによるコマンド実行結果: {message}")
+                return success
                 
-                # 非同期関数を定義
-                async def init_browser_async():
-                    try:
-                        logger.info("ブラウザを初期化中...")
-                        
-                        # ActionModelインスタンスを作成
+            logger.warning(f"認識できないコマンド: {command}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"コマンド実行エラー: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+            
+    def _navigate_url(self, match, command_or_url) -> Tuple[bool, str]:
+        """
+        URLを開きます。
+        
+        Args:
+            match: 正規表現マッチオブジェクト
+            command_or_url: コマンドまたは直接URL
+            
+        Returns:
+            Tuple[bool, str]: 成功したかどうかと、結果メッセージ
+        """
+        try:
+            # URLを抽出
+            url = command_or_url
+            if isinstance(command_or_url, str) and not command_or_url.startswith(('http://', 'https://')):
+                # 直接URLでない場合はマッチオブジェクトからURLを抽出
+                if match and match.groups():
+                    url = match.group(1).strip()
+                else:
+                    return False, "URLを抽出できませんでした。"
+            
+            # URLの整形
+            if not url.startswith(('http://', 'https://')):
+                if '.' in url:
+                    url = 'https://' + url
+                else:
+                    return False, f"無効なURL: {url}"
+            
+            # ブラウザが初期化されていない場合は初期化
+            if not self.browser_initialized:
+                self.initialize_browser()
+                if not self.browser_initialized:
+                    return False, "ブラウザの初期化に失敗しました。"
+            
+            # URLに移動
+            if self.use_mcp and self.mcp_adapter:
+                result = self.mcp_adapter.run_async(self.mcp_adapter.navigate(url))
+                if result.get("status") == "success":
+                    return True, f"{url} を開きました。"
+                else:
+                    return False, f"ナビゲーションに失敗しました: {result.get('message', '不明なエラー')}"
+            elif 'navigate' in self.browser_methods and self.browser_methods['navigate']:
+                self._run_browser_async(self.browser_methods['navigate'](url))
+                return True, f"{url} を開きました。"
+            else:
+                return False, "ブラウザのナビゲーション機能が利用できません。"
+                
+        except Exception as e:
+            logger.error(f"ナビゲーションエラー: {e}")
+            return False, f"エラー: {str(e)}"
+            
+    def _search_google(self, match, command) -> Tuple[bool, str]:
+        """
+        Googleで検索を実行します。
+        
+        Args:
+            match: 正規表現マッチオブジェクト
+            command: コマンド全体
+            
+        Returns:
+            Tuple[bool, str]: 成功したかどうかと、結果メッセージ
+        """
+        try:
+            # 検索クエリの抽出
+            query = match.group(1).strip() if match and match.groups() else ""
+            if not query:
+                return False, "検索クエリを抽出できませんでした。"
+                
+            # 検索URLの生成
+            search_url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
+            
+            # ブラウザで検索URLを開く
+            return self._navigate_url(None, search_url)
+            
+        except Exception as e:
+            logger.error(f"Google検索エラー: {e}")
+            return False, f"エラー: {str(e)}"
+            
+    def _search_youtube(self, match, command) -> Tuple[bool, str]:
+        """
+        YouTubeで検索を実行します。
+        
+        Args:
+            match: 正規表現マッチオブジェクト
+            command: コマンド全体
+            
+        Returns:
+            Tuple[bool, str]: 成功したかどうかと、結果メッセージ
+        """
+        try:
+            # 検索クエリの抽出
+            query = match.group(1).strip() if match and match.groups() else ""
+            if not query:
+                return False, "検索クエリを抽出できませんでした。"
+                
+            # 検索URLの生成
+            search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
+            
+            # ブラウザで検索URLを開く
+            return self._navigate_url(None, search_url)
+            
+        except Exception as e:
+            logger.error(f"YouTube検索エラー: {e}")
+            return False, f"エラー: {str(e)}"
+
+    def initialize_browser(self):
+        """ブラウザインターフェースを初期化"""
+        if self.browser_initialized:
+            logger.info("ブラウザは既に初期化されています。")
+            return True
+
+        try:
+            # 環境変数からGoogle APIキーを取得
+            google_api_key = os.environ.get("GOOGLE_API_KEY")
+            if google_api_key:
+                logger.info("Google APIキーが設定されています。Google AIを使用します。")
+            else:
+                logger.warning("GOOGLE_API_KEY環境変数が設定されていません。基本的なブラウザ機能のみを使用します。")
+
+            # MCPアダプタを使用する場合
+            if self.use_mcp:
+                self._initialize_mcp_browser()
+                return True
+
+            logger.info("browser-useライブラリを使用してブラウザを初期化します。")
+            
+            async def init_browser_async():
+                try:
+                    # ブラウザの初期化
+                    from browser_use import Browser, Agent, ActionModel
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    
+                    if google_api_key:
+                        # Google AI APIキーが設定されている場合はAIエージェントを使用
+                        logger.info("Google AI Geminiを使用してブラウザエージェントを初期化します。")
+                        agent_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+                        agent = Agent(
+                            task="ユーザーのコマンドに従ってWebブラウザを操作します",
+                            llm=agent_llm
+                        )
+                        self.browser = agent.action_model
+                    else:
+                        # APIキーがない場合は基本的なブラウザを使用
+                        logger.info("APIキーがないため、基本的なブラウザ機能を使用します。")
                         self.browser = ActionModel()
-                        
-                        # 初期ページを開く
-                        await self.browser.navigate("about:blank")
-                        
-                        # ブラウザメソッドを設定
-                        self.browser_methods['navigate'] = self.browser.navigate
-                        self.browser_methods['click'] = self.browser.click
-                        self.browser_methods['type'] = self.browser.type_text
-                        self.browser_methods['screenshot'] = self.browser.screenshot
-                        self.browser_methods['get_text'] = self.browser.get_text
-                        self.browser_methods['evaluate'] = self.browser.evaluate
-                        
-                        logger.info("ブラウザを初期化しました。")
-                        self.browser_initialized = True
-                    except Exception as e:
-                        logger.error(f"ブラウザの初期化に失敗しました: {e}")
-                        self.browser = None
-                        self.browser_initialized = False
-                
-                # 非同期関数を実行
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(init_browser_async())
-                loop.close()
-                
-            except ImportError as e:
-                logger.error(f"browser-useパッケージのインポートに失敗しました: {e}")
-                self.browser_initialized = False
+                    
+                    # 空白ページに移動
+                    logger.info("空白ページに移動します...")
+                    await self.browser.navigate("about:blank")
+                    
+                    # ブラウザメソッドを設定
+                    self.browser_methods = {
+                        'navigate': self.browser.navigate,
+                        'click': self.browser.click,
+                        'type': self.browser.type,
+                        'screenshot': self.browser.screenshot,
+                        'evaluate': self.browser.evaluate,
+                        'wait_for_navigation': self.browser.wait_for_navigation,
+                        'get_url': self.browser.get_url
+                    }
+                    
+                    logger.info("ブラウザが正常に初期化されました。")
+                    self.browser_initialized = True
+                except Exception as e:
+                    logger.error(f"ブラウザの初期化中にエラーが発生しました: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    self.browser_initialized = False
+            
+            # 非同期関数を実行
+            self._run_browser_async(init_browser_async())
+            return self.browser_initialized
+        
+        except ImportError as e:
+            logger.error(f"browser-useパッケージが見つかりませんでした: {e}")
+            logger.info("pip install browser-use playwrightでインストールしてください。")
+            return False
         except Exception as e:
             logger.error(f"ブラウザの初期化中にエラーが発生しました: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             self.browser_initialized = False
-
+            return False
+    
     def _run_browser_async(self, coro):
         """
         ブラウザの非同期操作を実行します。
@@ -571,90 +730,6 @@ class CommandInterpreter:
             logger.error(f"ブラウザ操作の実行に失敗しました: {e}")
             raise
     
-    def _search_youtube(self, match, command_text: str) -> Tuple[bool, str]:
-        """
-        YouTubeで検索を実行します。
-        
-        Args:
-            match: 正規表現マッチオブジェクト
-            command_text (str): コマンドテキスト
-            
-        Returns:
-            Tuple[bool, str]: 成功したかどうかと、結果メッセージ
-        """
-        # ブラウザが初期化されていない場合は初期化
-        if not self.browser_initialized:
-            self.initialize_browser()
-            if not self.browser_initialized:
-                return False, "ブラウザの初期化に失敗しました。"
-        
-        # 検索クエリの抽出
-        query = match.group(1).strip() if match and match.groups() else ""
-        if not query:
-            return False, "検索クエリが指定されていません。"
-        
-        try:
-            if self.use_mcp and self.mcp_adapter:
-                # MCPを使用してYouTube検索
-                result = self.mcp_adapter.run_async(self.mcp_adapter.search_youtube(query))
-                if result.get("status") == "success":
-                    return True, f"YouTubeで「{query}」を検索しました。"
-                else:
-                    return False, f"YouTube検索に失敗しました: {result.get('message', '不明なエラー')}"
-            elif 'youtube' in self.browser_methods and self.browser_methods['youtube']:
-                # ブラウザ直接操作
-                self._run_browser_async(self.browser_methods['youtube'](query))
-                return True, f"YouTubeで「{query}」を検索しました。"
-            else:
-                # 直接URLにアクセス
-                url = f"https://www.youtube.com/results?search_query={query}"
-                return self._browser_url(None, url)
-        except Exception as e:
-            logger.error(f"YouTube検索エラー: {e}")
-            return False, f"YouTube検索中にエラーが発生しました: {str(e)}"
-    
-    def _search_google(self, match, command_text: str) -> Tuple[bool, str]:
-        """
-        Googleで検索を実行します。
-        
-        Args:
-            match: 正規表現マッチオブジェクト
-            command_text (str): コマンドテキスト
-            
-        Returns:
-            Tuple[bool, str]: 成功したかどうかと、結果メッセージ
-        """
-        # ブラウザが初期化されていない場合は初期化
-        if not self.browser_initialized:
-            self.initialize_browser()
-            if not self.browser_initialized:
-                return False, "ブラウザの初期化に失敗しました。"
-        
-        # 検索クエリの抽出
-        query = match.group(1).strip() if match and match.groups() else ""
-        if not query:
-            return False, "検索クエリが指定されていません。"
-        
-        try:
-            if self.use_mcp and self.mcp_adapter:
-                # MCPを使用してGoogle検索
-                result = self.mcp_adapter.run_async(self.mcp_adapter.search_google(query))
-                if result.get("status") == "success":
-                    return True, f"Googleで「{query}」を検索しました。"
-                else:
-                    return False, f"Google検索に失敗しました: {result.get('message', '不明なエラー')}"
-            elif 'google' in self.browser_methods and self.browser_methods['google']:
-                # ブラウザ直接操作
-                self._run_browser_async(self.browser_methods['google'](query))
-                return True, f"Googleで「{query}」を検索しました。"
-            else:
-                # 直接URLにアクセス
-                url = f"https://www.google.com/search?q={query}"
-                return self._browser_url(None, url)
-        except Exception as e:
-            logger.error(f"Google検索エラー: {e}")
-            return False, f"Google検索中にエラーが発生しました: {str(e)}"
-    
     def close_browser(self):
         """
         ブラウザを閉じます。
@@ -679,7 +754,7 @@ class CommandInterpreter:
                         elif hasattr(self.browser, 'shutdown'):
                             await self.browser.shutdown()
                         logger.info("ブラウザを閉じました。")
-                    except Exception as e:
+        except Exception as e:
                         logger.error(f"ブラウザを閉じる際にエラーが発生しました: {e}")
                 
                 # 非同期関数を実行
@@ -730,4 +805,36 @@ class CommandInterpreter:
         except Exception as e:
             logger.error(f"利用可能なブラウザの取得エラー: {e}")
             # エラー時はデフォルト値を返す
-            return ['Chrome', 'Firefox', 'Edge'] 
+            return ['Chrome', 'Firefox', 'Edge']
+
+    def _initialize_mcp_browser(self):
+        """
+        MCPサーバーを使用してブラウザを初期化します。
+        
+        Returns:
+            bool: 初期化が成功したかどうか
+        """
+        logger.info("MCPサーバーを使用してブラウザを初期化します...")
+        try:
+            # MCPサーバーの起動
+            if not self.mcp_adapter:
+                logger.error("MCPアダプタが初期化されていません。")
+                return False
+                
+            if self.mcp_adapter.start_server():
+                # 接続を試行
+                if self.mcp_adapter.run_async(self.mcp_adapter.connect()):
+                    self.browser_initialized = True
+                    logger.info("MCPサーバー経由でブラウザを初期化しました。")
+                    return True
+                else:
+                    logger.error("MCPサーバーへの接続に失敗しました。")
+            else:
+                logger.error("MCPサーバーの起動に失敗しました。")
+                
+            return False
+        except Exception as e:
+            logger.error(f"MCPブラウザの初期化中にエラーが発生しました: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False 
