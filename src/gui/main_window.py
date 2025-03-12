@@ -1,8 +1,8 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, 
     QTextEdit, QLineEdit, QPushButton, QLabel, QTabWidget, QTableWidget,
     QTableWidgetItem, QHeaderView, QHBoxLayout, QProgressBar, QSystemTrayIcon, QMenu, QDialog,
-    QSpinBox, QGroupBox, QComboBox, QMessageBox)
-from PyQt6.QtCore import Qt, pyqtSlot, QTimer, QUrl
+    QSpinBox, QGroupBox, QComboBox, QMessageBox, QScrollArea, QFrame)
+from PyQt6.QtCore import Qt, pyqtSlot, QTimer, QUrl, QTime
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtGui import QIcon, QAction
 import logging
@@ -11,6 +11,7 @@ from datetime import datetime
 import psutil
 import GPUtil
 import wmi
+import threading
 
 class TaskDialog(QDialog):
     def __init__(self, parent=None):
@@ -82,21 +83,33 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('デスクトップエージェント')
         self.setGeometry(100, 100, 1000, 700)
         
-        # タブウィジェットの作成
-        self.tab_widget = QTabWidget()
-        self.setCentralWidget(self.tab_widget)
+        self.create_tabs()
         
-        # メインタブの追加
-        main_tab = self._create_main_tab()
-        self.tab_widget.addTab(main_tab, "メイン")
+    def create_tabs(self):
+        """メインのタブを作成"""
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
         
-        # コマンド一覧タブの追加
-        commands_tab = self._create_commands_tab()
-        self.tab_widget.addTab(commands_tab, "コマンド一覧")
-    
-    def _create_main_tab(self):
+        # メイン機能タブ
+        self.main_tab = QWidget()
+        self.tabs.addTab(self.main_tab, "メイン")
+        self.setup_main_tab()
+        
+        # コマンドリストタブ
+        self.command_list_tab = QWidget()
+        self.tabs.addTab(self.command_list_tab, "コマンド一覧")
+        self.setup_command_list_tab()
+        
+        # ブラウザ機能タブ
+        self.browser_tab = QWidget()
+        self.tabs.addTab(self.browser_tab, "ブラウザ機能")
+        self.setup_browser_tab()
+        
+        # タブが変更されたときのイベント
+        self.tabs.currentChanged.connect(self.on_tab_changed)
+
+    def setup_main_tab(self):
         """メインタブの作成"""
-        tab = QWidget()
         layout = QVBoxLayout()
         
         # ログ表示エリア
@@ -182,12 +195,10 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.command_input)
         main_layout.addWidget(execute_button)
         
-        tab.setLayout(main_layout)
-        return tab
-    
-    def _create_commands_tab(self):
-        """コマンド一覧タブの作成"""
-        tab = QWidget()
+        self.main_tab.setLayout(main_layout)
+
+    def setup_command_list_tab(self):
+        """コマンドリストタブの設定"""
         layout = QVBoxLayout()
         
         # コマンド一覧テーブル
@@ -231,40 +242,178 @@ class MainWindow(QMainWindow):
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         
         layout.addWidget(table)
-        tab.setLayout(layout)
-        return tab
-    
-    @pyqtSlot()
+        self.command_list_tab.setLayout(layout)
+
+    def setup_browser_tab(self):
+        """ブラウザ機能タブの設定"""
+        layout = QVBoxLayout()
+        
+        # タイトル
+        title_label = QLabel("高度なブラウザ操作機能")
+        title_label.setStyleSheet("font-size: 16pt; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title_label)
+        
+        # 説明
+        description_label = QLabel("browser-useパッケージを使用した高度なブラウザ操作機能を利用できます。")
+        description_label.setWordWrap(True)
+        layout.addWidget(description_label)
+        
+        # 機能リスト（スクロールエリア内）
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_container = QWidget()
+        scroll_layout = QVBoxLayout(scroll_container)
+        
+        # 機能カードを作成
+        features = [
+            {
+                "title": "インテリジェントなウェブ自動化",
+                "description": "AIを活用したウェブブラウザの操作が可能です。自然言語で指示するだけで、様々なウェブサイトでの操作を自動化します。",
+                "commands": ["「ブラウザでYahooを開いて」", "「YouTubeで猫の動画を再生して」"]
+            },
+            {
+                "title": "要素操作",
+                "description": "ウェブページ上の特定の要素（ボタン、リンク、テキストなど）を指示して操作できます。",
+                "commands": ["「ブラウザで要素ログインボタンをクリック」", "「ブラウザで要素検索をクリック」"]
+            },
+            {
+                "title": "スクリーンショット",
+                "description": "現在表示しているウェブページのスクリーンショットを撮影し保存できます。",
+                "commands": ["「ブラウザでスクリーンショットを撮る」"]
+            },
+            {
+                "title": "マルチLLMサポート",
+                "description": "様々なLLMを使用して、より高度なウェブ操作が可能です。",
+                "commands": []
+            }
+        ]
+        
+        for feature in features:
+            # 機能カードのフレーム
+            card = QFrame()
+            card.setFrameShape(QFrame.Shape.StyledPanel)
+            card.setStyleSheet("background-color: #f5f5f5; border-radius: 5px; padding: 10px; margin: 5px;")
+            card_layout = QVBoxLayout(card)
+            
+            # タイトル
+            title = QLabel(feature["title"])
+            title.setStyleSheet("font-size: 14pt; font-weight: bold;")
+            card_layout.addWidget(title)
+            
+            # 説明
+            desc = QLabel(feature["description"])
+            desc.setWordWrap(True)
+            desc.setStyleSheet("font-size: 10pt; margin-top: 5px; margin-bottom: 5px;")
+            card_layout.addWidget(desc)
+            
+            # コマンド例
+            if feature["commands"]:
+                commands_label = QLabel("コマンド例:")
+                commands_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
+                card_layout.addWidget(commands_label)
+                
+                for cmd in feature["commands"]:
+                    cmd_label = QLabel(f"• {cmd}")
+                    cmd_label.setStyleSheet("font-family: monospace; padding-left: 10px;")
+                    card_layout.addWidget(cmd_label)
+            
+            scroll_layout.addWidget(card)
+        
+        # 余白を追加
+        scroll_layout.addStretch()
+        
+        scroll_area.setWidget(scroll_container)
+        layout.addWidget(scroll_area)
+        
+        # ブラウザ起動ボタン
+        browser_button = QPushButton("ブラウザを起動")
+        browser_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border-radius: 5px;
+                padding: 10px;
+                font-size: 12pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        browser_button.clicked.connect(self.launch_browser)
+        layout.addWidget(browser_button)
+        
+        self.browser_tab.setLayout(layout)
+
+    def launch_browser(self):
+        """ブラウザを起動する"""
+        try:
+            from browser_use import Browser
+            # 非同期関数なので、簡単なURLを開くだけにする
+            import asyncio
+            import threading
+            
+            def run_browser():
+                async def navigate():
+                    browser = Browser(headless=False)
+                    await browser.navigate("https://www.google.com")
+                    # ブラウザは自動的に閉じず、開いたままにする
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(navigate())
+            
+            # 別スレッドで実行
+            thread = threading.Thread(target=run_browser)
+            thread.daemon = True
+            thread.start()
+            
+            self.log("ブラウザを起動しました")
+        except Exception as e:
+            self.log(f"ブラウザの起動に失敗しました: {str(e)}")
+
+    def on_tab_changed(self, index):
+        """タブが変更されたときの処理"""
+        pass  # 必要に応じて処理を追加
+
     def execute_command(self):
-        """コマンドの実行"""
+        """コマンド入力からコマンドを実行"""
         command = self.command_input.text().strip()
         if not command:
             return
             
-        self.log_display.append(f"\n> {command}")
+        self.log(f"コマンド: {command}")
         self.command_input.clear()
         
+        if self.command_interpreter is not None:
+            # コマンドの実行は別スレッドで行う
+            threading.Thread(target=self._execute_command_thread, args=(command,), daemon=True).start()
+        else:
+            self.log("コマンドインタープリタが初期化されていません")
+
+    def _execute_command_thread(self, command):
+        """別スレッドでコマンドを実行"""
         try:
-            # コマンドの解釈と実行
-            result = self.command_interpreter.interpret(command)
-            if result:
-                command_type, params = result
-                success = self.agent.execute_command(command_type, params)
-                if success:
-                    self.log_display.append("✓ コマンドを実行しました")
-                else:
-                    self.log_display.append("✗ コマンドの実行に失敗しました")
+            success = self.command_interpreter.execute_command(command)
+            if success:
+                self.log("コマンドを実行しました")
             else:
-                self.log_display.append("？ コマンドを理解できませんでした")
-                
+                self.log("コマンドの実行に失敗しました")
         except Exception as e:
-            self.logger.error(f"コマンド実行エラー: {e}")
-            self.log_display.append(f"⚠ エラー: {str(e)}")
+            self.log(f"コマンド実行エラー: {str(e)}")
+
+    def log(self, message):
+        """ログを表示"""
+        current_time = QTime.currentTime().toString("HH:mm:ss")
+        log_message = f"[{current_time}] {message}"
+        self.log_display.append(log_message)
         
-        # スクロールを最下部に移動
-        self.log_display.verticalScrollBar().setValue(
-            self.log_display.verticalScrollBar().maximum()
-        ) 
+        # ログをファイルにも書き込む
+        try:
+            if hasattr(self, 'logger') and self.logger:
+                self.logger.info(message)
+        except Exception:
+            pass  # ロギングエラーは無視
 
     def setup_system_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
