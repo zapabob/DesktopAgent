@@ -3,13 +3,13 @@ uvicorn==0.23.2
 websockets==11.0.3
 pydantic==2.4.2
 python-dotenv==1.0.0
-langchain==0.0.325
+langchain==0.2.5
 langchain-google-genai==0.0.5
 langchain-openai==0.0.2
 langchain-anthropic==0.1.1
 browser-use==0.2.0
 google-generativeai==0.3.1
-python-multipart==0.0.6
+python-multipart==0.0.18
 redis==5.0.1
 celery==5.3.4
 pyautogui==0.9.54
