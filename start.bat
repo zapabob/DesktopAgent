@@ -2,9 +2,9 @@
 setlocal
 chcp 65001 > nul
 
-:: Pythonの仮想環境が存在しない場合は作成
+:: Python virtual environment setup
 if not exist ".venv" (
-    echo 仮想環境を作成中...
+    echo Creating virtual environment...
     python -m venv .venv
     call .venv\Scripts\activate.bat
     python -m pip install --upgrade pip
@@ -13,14 +13,14 @@ if not exist ".venv" (
     call .venv\Scripts\activate.bat
 )
 
-:: アプリケーションの起動
-echo デスクトップエージェントを起動中...
-echo 注意: 既に別のインスタンスが実行中の場合は起動できません
+:: Start application
+echo Starting Desktop Agent...
+echo Note: Cannot start if another instance is already running
 python src/main.py
 
-:: エラーが発生した場合は表示
+:: Display errors if any
 if errorlevel 1 (
-    echo エラーが発生しました。
+    echo An error occurred.
     pause
 )
 
