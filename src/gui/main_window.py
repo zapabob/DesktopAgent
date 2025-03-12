@@ -94,12 +94,43 @@ class MainWindow(QMainWindow):
         self.clock_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.clock_label.setStyleSheet("font-size: 14pt; font-weight: bold;")
         
+        # システム監視コンポーネントの初期化
+        self.setup_system_monitor()
+        
         self.create_tabs()
+        
+    def setup_system_monitor(self):
+        """システム監視用のUIコンポーネントを初期化"""
+        # CPU使用率表示
+        self.cpu_bar = QProgressBar()
+        self.cpu_bar.setMaximum(100)
+        self.cpu_bar.setFormat("%v%")
+        self.cpu_bar.setTextVisible(True)
+        
+        # GPU使用率表示
+        self.gpu_bar = QProgressBar()
+        self.gpu_bar.setMaximum(100)
+        self.gpu_bar.setFormat("%v%")
+        self.gpu_bar.setTextVisible(True)
+        
+        # メモリ使用率表示
+        self.memory_bar = QProgressBar()
+        self.memory_bar.setMaximum(100)
+        self.memory_bar.setFormat("%v%")
+        self.memory_bar.setTextVisible(True)
+        
+        # 温度表示ラベル
+        self.cpu_temp_label = QLabel("CPU温度: N/A")
+        self.gpu_temp_label = QLabel("GPU温度: N/A")
         
     def create_tabs(self):
         """メインのタブを作成"""
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
+        
+        # ステータスバーに時計を表示
+        status_bar = self.statusBar()
+        status_bar.addPermanentWidget(self.clock_label)
         
         # メイン機能タブ
         self.main_tab = QWidget()
@@ -122,6 +153,33 @@ class MainWindow(QMainWindow):
     def setup_main_tab(self):
         """メインタブの作成"""
         layout = QVBoxLayout()
+        
+        # システム情報セクション
+        system_group = QGroupBox("システム情報")
+        system_layout = QVBoxLayout()
+        
+        # CPU情報
+        cpu_layout = QHBoxLayout()
+        cpu_layout.addWidget(QLabel("CPU使用率:"))
+        cpu_layout.addWidget(self.cpu_bar)
+        cpu_layout.addWidget(self.cpu_temp_label)
+        system_layout.addLayout(cpu_layout)
+        
+        # GPU情報
+        gpu_layout = QHBoxLayout()
+        gpu_layout.addWidget(QLabel("GPU使用率:"))
+        gpu_layout.addWidget(self.gpu_bar)
+        gpu_layout.addWidget(self.gpu_temp_label)
+        system_layout.addLayout(gpu_layout)
+        
+        # メモリ情報
+        memory_layout = QHBoxLayout()
+        memory_layout.addWidget(QLabel("メモリ使用率:"))
+        memory_layout.addWidget(self.memory_bar)
+        system_layout.addLayout(memory_layout)
+        
+        system_group.setLayout(system_layout)
+        layout.addWidget(system_group)
         
         # ログ表示エリア
         self.log_display = QTextEdit()
