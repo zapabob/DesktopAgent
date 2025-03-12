@@ -1,65 +1,26 @@
 # デスクトップエージェント
 
-<<<<<<< HEAD
-デスクトップエージェントは、自然言語でコンピュータを操作できるPythonアプリケーションです。コマンドの実行、システムモニタリング、ポモドーロタイマーなどの機能を提供します。
-
-## 主な機能
-
-- 自然言語によるコマンド実行
-- システムリソースのモニタリング（CPU、GPU、メモリ使用率）
-- ポモドーロタイマー
-- タスク管理
-- システムトレイ常駐
-- コマンド履歴の記録
-
-## 必要条件
-
-- Python 3.8以上
-- Windows 10/11
-- Google AI (Gemini Pro) APIキー
-
-## インストール方法
-
-1. リポジトリをクローン：
-```bash
-git clone https://github.com/yourusername/DesktopAgent.git
-cd DesktopAgent
-```
-
-2. 仮想環境を作成して有効化：
-```bash
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-```
-
-3. 必要なパッケージをインストール：
-```bash
-pip install -r requirements.txt
-```
-
-4. 環境変数の設定：
-`.env`ファイルを作成し、以下の内容を設定：
-```
-GOOGLE_API_KEY=your_api_key_here
-=======
 マルチモーダルな自律型AIエージェントシステム。複数のAIエージェントが協調して動作し、デスクトップ操作の自動化と支援を行います。
-
-## Features
-- Autonomous Agent Management
-- Real-time System Monitoring
-- Cross-platform GUI Interface
+音声認識とAI駆動のブラウザ制御により、自然な対話を通じてブラウザ操作や様々なタスクの自動化を実現します。
 
 ## 主な機能
+
+### 高度なブラウザ操作
+- browser-useパッケージによるインテリジェントなウェブ自動化
+- 自然言語指示によるウェブサイト操作（「YouTubeで猫の動画を再生して」など）
+- 要素の探索とクリック、フォーム入力、スクリーンショット撮影機能
+- Playwrightを活用した高レベルなブラウザ制御
+
+### 音声認識と音声コマンド
+- 音声コマンドによるブラウザ操作とシステム制御
+- Whisperモデルによるローカルでのオフライン音声認識
+- GPU加速による高速かつ正確な認識
+- 複数言語対応（日本語・英語）
 
 ### マルチエージェントシステム
 - 複数の子エージェントによる並行処理
 - エージェント間の自律的な通信と協調
 - リソース使用の最適化と負荷分散
-
-### 学習機能
-- Transformerベースの行動学習
-- マウス操作とボタン入力の予測
-- RAGによるコンテキスト理解
 
 ### AIモデル統合
 - Google AI Studio（デフォルト）
@@ -67,20 +28,28 @@ GOOGLE_API_KEY=your_api_key_here
 - Anthropic（オプション）
 - 自動フォールバックとロードバランシング
 
-### データ管理
-- SQLiteによる永続化
-- セキュアなデータ保存
+### システム監視と制御
+- CPUやGPUの使用率、温度監視
+- メモリ使用状況のリアルタイムモニタリング
+- システム操作の自動化（音量調整など）
+
+### データ管理とUI
+- PyQt6ベースのモダンなインターフェース
+- タスク管理とポモドーロタイマー
+- SQLiteによるデータの永続化
 - 構造化されたログ管理
 
 ## 必要要件
 
 - Python 3.10以上
-- CUDA対応GPU（推奨）
+- CUDA対応GPU（音声認識と高度な機能に推奨）
+- Windows 10/11
 - 必要なPythonパッケージ:
-  - PyQt6
-  - torch
-  - numpy
-  - langchain
+  - PyQt6とPyQt6-WebEngine
+  - browser-use
+  - Playwright
+  - Torch (CUDA対応)
+  - Transformers
   - その他（requirements.txtを参照）
 
 ## インストール & クイックスタート
@@ -92,14 +61,23 @@ cd DesktopAgent
 python -m pip install -r requirements.txt
 ```
 
-2. 設定ファイルの作成:
+2. Playwrightブラウザドライバーのインストール:
+```bash
+python -m playwright install
+```
+
+3. 設定ファイルの作成:
 ```bash
 cp config.example.yaml config.yaml
 # 使用するAIプロバイダーのAPIキーを設定
 ```
 
-3. アプリケーションの実行:
+4. アプリケーションの実行:
 ```bash
+# Windowsの場合
+start.bat
+
+# または
 python src/main.py
 ```
 
@@ -115,107 +93,83 @@ ai_providers:
   use_anthropic: false # Anthropic (オプション)
 ```
 
+### ブラウザ設定
+```yaml
+browser_paths:
+  chrome: "C:/Program Files/Google/Chrome/Application/chrome.exe"
+  edge: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+  firefox: "C:/Program Files/Mozilla Firefox/firefox.exe"
+```
+
 ### システム設定
 ```yaml
 system_settings:
   cpu_threshold: 80   # CPU使用率の閾値
   memory_threshold: 85 # メモリ使用率の閾値
->>>>>>> 42de7d643d987d98855d441372a3931e7de31809
+  voice_recognition:
+    enabled: true
+    model: "tiny"     # tiny, base, small, medium
+    device: "cuda"    # cuda, cpu
 ```
 
 ## 使用方法
 
-<<<<<<< HEAD
-1. アプリケーションを起動：
-```bash
-python DesktopAgent/src/main.py
-```
-
-2. コマンド入力欄に自然言語でコマンドを入力（例：「ブラウザでGoogleを開いて」）
-
-3. システムトレイアイコンから各種機能にアクセス可能
-
-## 利用可能なコマンド
-
-- ブラウザ操作（Edge, Chrome, デフォルトブラウザ）
-- ファイル操作（作成、移動、削除）
-- ウィンドウ操作（最小化）
-- アプリケーション起動
-- マウス・キーボード操作
-- 画面分析
-
-## 開発者向け情報
-
-プロジェクト構造：
-```
-DesktopAgent/
-├── src/
-│   ├── agent/
-│   │   ├── autonomous_agent.py
-│   │   ├── command_interpreter.py
-│   │   └── keyboard_monitor.py
-│   ├── db/
-│   │   └── models.py
-│   ├── gui/
-│   │   └── main_window.py
-│   └── main.py
-├── requirements.txt
-└── README.md
-```
-
-## ライセンス
-
-MITライセンス
-
-## 注意事項
-
-- システム操作を行うため、管理者権限が必要な場合があります
-- APIキーは適切に管理してください
-- キーボード・マウス操作の自動化は慎重に行ってください
-=======
+### GUI操作
 1. アプリケーションの起動:
    - `start.bat`をダブルクリック
    - または、コマンドラインで`start.bat`を実行
 
 2. メインウィンドウの操作:
-   - エージェントの状態監視
-   - タスクの割り当て
-   - メトリクスの確認
+   - ブラウザ操作タブでウェブ自動化
+   - 音声認識ボタンで音声コマンドの開始/停止
+   - システムモニタリングとタスク管理
 
-3. エージェントの管理:
-   - 新規エージェントの追加
-   - 既存エージェントの一時停止/再開
-   - タスクの優先順位付け
+### 音声コマンド例
+- 「YouTubeで猫の動画を再生して」
+- 「ブラウザでGoogleを開いて」
+- 「Gmailを開いて」
+- 「音量を上げて」
+
+### ブラウザ操作コマンド例
+- 「ブラウザでYahooを開いて」
+- 「ブラウザで要素ログインボタンをクリック」
+- 「ブラウザでスクリーンショットを撮る」
+- 「Googleでデスクトップエージェントを検索」
 
 ## 開発者ガイド
 
 ### プロジェクト構造
 ```
 src/
-├── DesktopAgent/
-│   ├── agent/         # エージェント関連
-│   ├── ai/            # AIモデル管理
-│   ├── database/      # データベース
-│   ├── gui/           # GUI
-│   ├── models/        # 機械学習モデル
-│   ├── monitoring/    # システム監視
-│   └── rag/           # RAG実装
+├── agent/             # エージェント関連
+│   ├── command_interpreter.py  # コマンド解釈
+│   ├── voice_recognizer.py     # 音声認識
+│   └── keyboard_monitor.py     # キーボード監視
+├── desktop/           # デスクトップ制御
+│   ├── browser_controller.py       # 基本ブラウザ制御
+│   └── advanced_browser_controller.py  # 高度ブラウザ制御
+├── db/                # データベース
+│   └── models.py      # データモデル
+├── gui/               # GUI
+│   └── main_window.py # メインウィンドウ
+├── models/            # 機械学習モデル
 ├── main.py            # エントリーポイント
 └── config.yaml        # 設定ファイル
 ```
 
 ### 拡張方法
-1. 新しいエージェントの追加:
-   - `agent/`ディレクトリに新しいエージェントクラスを作成
-   - `ChildAgent`クラスを継承
+1. 新しいコマンドの追加:
+   - `command_interpreter.py`にコマンドパターンとハンドラを追加
 
-2. 新しいAIモデルの追加:
-   - `ai/model_manager.py`にプロバイダーを追加
-   - 必要なインターフェースを実装
+2. ブラウザ機能の拡張:
+   - `advanced_browser_controller.py`に新しいブラウザ操作メソッドを追加
+
+3. 音声認識の調整:
+   - `voice_recognizer.py`でモデルサイズや設定をカスタマイズ
 
 ## ライセンス
 
-Apache2.0 License
+MIT License
 
 ## 貢献
 
@@ -229,8 +183,7 @@ Apache2.0 License
 
 問題が発生した場合は、以下を確認してください：
 1. ログファイル（`logs/`ディレクトリ）
-2. システムリソースの使用状況
-3. AIプロバイダーの設定
+2. GPUドライバが最新かどうか確認
+3. AIプロバイダーの設定とAPIキーの有効性
 
 詳細なトラブルシューティングは[Wiki](https://github.com/zapabob/DesktopAgent/wiki)を参照してください。
->>>>>>> 42de7d643d987d98855d441372a3931e7de31809
