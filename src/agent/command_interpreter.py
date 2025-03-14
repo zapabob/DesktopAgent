@@ -569,11 +569,16 @@ class CommandInterpreter:
             # 検索URLの生成
             search_url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
             
-            # ブラウザで検索URLを開く
-            return self._navigate_url(None, search_url)
+            # 標準webbrowserモジュールを使用
+            logger.info(f"Google検索を実行: {query}")
+            import webbrowser
+            webbrowser.open(search_url)
+            return True, f"Google検索を実行しました: {query}"
             
         except Exception as e:
             logger.error(f"Google検索エラー: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False, f"エラー: {str(e)}"
             
     def _search_youtube(self, match, command) -> Tuple[bool, str]:
@@ -596,11 +601,16 @@ class CommandInterpreter:
             # 検索URLの生成
             search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
             
-            # ブラウザで検索URLを開く
-            return self._navigate_url(None, search_url)
+            # 標準webbrowserモジュールを使用
+            logger.info(f"YouTube検索を実行: {query}")
+            import webbrowser
+            webbrowser.open(search_url)
+            return True, f"YouTube検索を実行しました: {query}"
             
         except Exception as e:
             logger.error(f"YouTube検索エラー: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False, f"エラー: {str(e)}"
 
     def initialize_browser(self):
