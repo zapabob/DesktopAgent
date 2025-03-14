@@ -54,13 +54,20 @@ class CommandInterpreter:
         # MCPサーバーの設定
         self.use_mcp = os.environ.get("USE_MCP", "false").lower() == "true"
         self.mcp_adapter = None
-        if self.use_mcp and MCP_AVAILABLE:
-            try:
-                self.mcp_adapter = MCPAdapter()
-                logger.info("MCPアダプタを初期化しました")
-            except Exception as e:
-                logger.error(f"MCPアダプタの初期化に失敗しました: {e}")
-                self.mcp_adapter = None
+        
+        if self.use_mcp:
+            if MCP_AVAILABLE:
+                try:
+                    from mcp.mcp_adapter import MCPAdapter
+                    self.mcp_adapter = MCPAdapter()
+                    logger.info("MCPアダプタを初期化しました")
+                except Exception as e:
+                    logger.error(f"MCPアダプタの初期化に失敗しました: {e}")
+                    self.mcp_adapter = None
+                    self.use_mcp = False
+            else:
+                logger.warning("MCPモジュールが利用できないため、標準ブラウザモードを使用します")
+                self.use_mcp = False
         
         # ブラウザメソッド辞書
         self.browser_methods = {}
@@ -101,7 +108,7 @@ class CommandInterpreter:
                 elif model_name == "gpt-4omini":
                     return ChatOpenAI(model="gpt-4omini", api_key=os.environ.get("OPENAI_API_KEY"))
                 elif model_name == "claude-sonnet":
-                    return ChatAnthropic(model="claude-3-5-sonnet-2024 ", api_key=os.environ.get("ANTHROPIC_API_KEY"))
+                    return ChatAnthropic(model="claude-3-5-sonnet-2024", api_key=os.environ.get("ANTHROPIC_API_KEY"))
                 else:
                     logger.warning(f"不明なモデル名: {model_name}、代替モデルを使用します")
                     # fallback_modelを使用
