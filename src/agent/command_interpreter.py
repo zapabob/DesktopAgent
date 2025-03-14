@@ -440,28 +440,48 @@ class CommandInterpreter:
         Returns:
             Tuple[bool, str]: 成功したかどうかと、結果メッセージ
         """
-        if not self.agent_executor:
-            if not self.llm:
-                return False, "LLMが設定されていないため、この操作は実行できません。"
-            
-            # LLMが設定されている場合は、エージェントを設定
-            self.setup_langchain_agent(self.llm)
-        
         try:
             # ブラウザが初期化されていない場合は初期化
             if not self.browser_initialized:
-                self.initialize_browser()
-                if not self.browser_initialized:
+                success = self.initialize_browser()
+                if not success:
                     return False, "ブラウザの初期化に失敗しました。"
+                    
+            # Google APIキーがない場合
+            google_api_key = os.environ.get("GOOGLE_API_KEY")
+            if not google_api_key:
+                return False, "Google APIキーが設定されていません。AIによるブラウザ操作にはAPIキーが必要です。"
             
-            # matched_textから実際の命令部分を抽出
-            instruction = command_text
-            
-            # エージェントの実行
-            result = self.agent_executor.invoke({"input": instruction})
-            return True, result["output"]
+            # browser-useライブラリのAIエージェントを使用
+            if hasattr(self, 'browser_agent'):
+                logger.info(f"AIエージェントを使用してブラウザを操作します: {command_text}")
+                
+                async def run_browser_agent():
+                    try:
+                        # AIエージェントにコマンドを実行させる
+                        result = await self.browser_agent.run(command_text)
+                        return result
+                    except Exception as e:
+                        logger.error(f"AIエージェント実行エラー: {e}")
+                        raise
+                
+                # 非同期実行
+                result = self._run_browser_async(run_browser_agent())
+                return True, f"AIによるブラウザ操作結果: {result or '完了しました'}"
+                
+            # AIエージェントがない場合はLangChainエージェントを使用
+            elif self.agent_executor:
+                logger.info(f"LangChainエージェントを使用してブラウザを操作します: {command_text}")
+                result = self.agent_executor.invoke({"input": command_text})
+                return True, result["output"]
+                
+            else:
+                return False, "AIエージェントが設定されていません。AIによるブラウザ操作には、browser-useライブラリまたはLangChainエージェントが必要です。"
+                
         except Exception as e:
             logger.error(f"LLMによるブラウザ制御エラー: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False, f"ブラウザ制御中にエラーが発生しました: {str(e)}"
 
     def execute_command(self, command: str) -> bool:
@@ -537,11 +557,24 @@ class CommandInterpreter:
                 else:
                     return False, f"無効なURL: {url}"
             
-            # 標準のwebbrowserモジュールを使用
-            logger.info(f"URLを開きます: {url}")
-            import webbrowser
-            webbrowser.open(url)
-            return True, f"{url} を開きました。"
+            # ブラウザが初期化されていない場合は初期化
+            if not self.browser_initialized:
+                success = self.initialize_browser()
+                if not success:
+                    return False, "ブラウザの初期化に失敗しました。"
+            
+            # browser-useライブラリがある場合は使用
+            if self.browser and hasattr(self.browser, 'goto'):
+                logger.info(f"browser-useを使用してURLを開きます: {url}")
+                # 非同期実行
+                self._run_browser_async(self.browser.goto(url))
+                return True, f"{url} を開きました。"
+            else:
+                # 標準のwebbrowserモジュールを使用
+                logger.info(f"標準ブラウザを使用してURLを開きます: {url}")
+                import webbrowser
+                webbrowser.open(url)
+                return True, f"{url} を開きました。"
                 
         except Exception as e:
             logger.error(f"ナビゲーションエラー: {e}")
@@ -569,11 +602,24 @@ class CommandInterpreter:
             # 検索URLの生成
             search_url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
             
-            # 標準webbrowserモジュールを使用
-            logger.info(f"Google検索を実行: {query}")
-            import webbrowser
-            webbrowser.open(search_url)
-            return True, f"Google検索を実行しました: {query}"
+            # ブラウザが初期化されていない場合は初期化
+            if not self.browser_initialized:
+                success = self.initialize_browser()
+                if not success:
+                    return False, "ブラウザの初期化に失敗しました。"
+            
+            # browser-useライブラリがある場合は使用
+            if self.browser and hasattr(self.browser, 'goto'):
+                logger.info(f"browser-useを使用してGoogle検索を実行: {query}")
+                # 非同期実行
+                self._run_browser_async(self.browser.goto(search_url))
+                return True, f"Google検索を実行しました: {query}"
+            else:
+                # 標準のwebbrowserモジュールを使用
+                logger.info(f"標準ブラウザを使用してGoogle検索を実行: {query}")
+                import webbrowser
+                webbrowser.open(search_url)
+                return True, f"Google検索を実行しました: {query}"
             
         except Exception as e:
             logger.error(f"Google検索エラー: {e}")
@@ -601,11 +647,24 @@ class CommandInterpreter:
             # 検索URLの生成
             search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
             
-            # 標準webbrowserモジュールを使用
-            logger.info(f"YouTube検索を実行: {query}")
-            import webbrowser
-            webbrowser.open(search_url)
-            return True, f"YouTube検索を実行しました: {query}"
+            # ブラウザが初期化されていない場合は初期化
+            if not self.browser_initialized:
+                success = self.initialize_browser()
+                if not success:
+                    return False, "ブラウザの初期化に失敗しました。"
+            
+            # browser-useライブラリがある場合は使用
+            if self.browser and hasattr(self.browser, 'goto'):
+                logger.info(f"browser-useを使用してYouTube検索を実行: {query}")
+                # 非同期実行
+                self._run_browser_async(self.browser.goto(search_url))
+                return True, f"YouTube検索を実行しました: {query}"
+            else:
+                # 標準のwebbrowserモジュールを使用
+                logger.info(f"標準ブラウザを使用してYouTube検索を実行: {query}")
+                import webbrowser
+                webbrowser.open(search_url)
+                return True, f"YouTube検索を実行しました: {query}"
             
         except Exception as e:
             logger.error(f"YouTube検索エラー: {e}")
@@ -632,60 +691,105 @@ class CommandInterpreter:
                 self._initialize_mcp_browser()
                 return True
 
-            # 標準のwebrowserモジュールを使用
-            logger.info("標準のwebbrowserモジュールを使用してブラウザを初期化します。")
-            import webbrowser
+            # browser-useライブラリを使用
+            logger.info("browser-useライブラリを使用してブラウザを初期化します。")
             
-            # ブラウザメソッドをシミュレート
-            self.browser = None  # 実際のブラウザインスタンスはなし
-            
-            # ブラウザメソッドを設定（ダミー関数）
-            async def dummy_navigate(url):
-                webbrowser.open(url)
+            try:
+                # browser-useの主要コンポーネントをインポート
+                from browser_use import BrowserManager
+                
+                # BrowserManagerを初期化
+                self.browser_manager = BrowserManager()
+                browser_instance = self.browser_manager.create_browser()
+                self.browser = browser_instance
+                
+                # Google AIを使用する場合
+                if google_api_key:
+                    try:
+                        from langchain_google_genai import ChatGoogleGenerativeAI
+                        from browser_use import setup_agent
+                        
+                        # Google Geminiモデルを初期化
+                        logger.info("Google Gemini AIモデルを初期化しています...")
+                        llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+                        
+                        # エージェントをセットアップ
+                        self.browser_agent = setup_agent(
+                            browser=self.browser,
+                            llm=llm,
+                            task="ユーザーの指示に従ってWebブラウザを操作します"
+                        )
+                        logger.info("AIエージェントを使用したブラウザ操作が準備できました")
+                    except Exception as e:
+                        logger.error(f"AIエージェントの初期化に失敗しました: {e}")
+                        logger.info("AIなしでブラウザ操作を続行します")
+                
+                # ブラウザメソッドを設定
+                self.browser_methods = {
+                    'navigate': self.browser.goto,
+                    'click': self.browser.click,
+                    'type': self.browser.type,
+                    'screenshot': self.browser.screenshot,
+                    'evaluate': self.browser.evaluate,
+                    'wait_for_navigation': self.browser.wait_for_navigation,
+                    'get_url': self.browser.url
+                }
+                
+                logger.info("ブラウザが正常に初期化されました")
+                self.browser_initialized = True
                 return True
                 
-            async def dummy_click(selector):
-                logger.info(f"クリックをシミュレート: {selector}")
+            except ImportError:
+                logger.error("browser-useライブラリが見つかりません。標準のブラウザモードを使用します。")
+                import webbrowser
+                
+                # 代替の基本ブラウザ機能としてwebbrowserモジュールを使用
+                self.browser = None
+                
+                # ブラウザメソッドを設定（ダミー関数）
+                async def dummy_navigate(url):
+                    webbrowser.open(url)
+                    return True
+                    
+                async def dummy_click(selector):
+                    logger.info(f"クリックをシミュレート: {selector}")
+                    return True
+                    
+                async def dummy_type(selector, text):
+                    logger.info(f"テキスト入力をシミュレート: {selector} -> {text}")
+                    return True
+                    
+                async def dummy_screenshot(path=None):
+                    logger.info(f"スクリーンショットをシミュレート: {path}")
+                    return path or f"screenshot_{int(time.time())}.png"
+                    
+                async def dummy_evaluate(code):
+                    logger.info(f"JavaScript実行をシミュレート: {code[:50]}...")
+                    return None
+                    
+                async def dummy_wait_for_navigation():
+                    logger.info("ナビゲーション待機をシミュレート")
+                    return True
+                    
+                async def dummy_get_url():
+                    logger.info("URL取得をシミュレート")
+                    return "https://example.com"
+                    
+                # ブラウザメソッドを設定
+                self.browser_methods = {
+                    'navigate': dummy_navigate,
+                    'click': dummy_click,
+                    'type': dummy_type,
+                    'screenshot': dummy_screenshot,
+                    'evaluate': dummy_evaluate,
+                    'wait_for_navigation': dummy_wait_for_navigation,
+                    'get_url': dummy_get_url
+                }
+                
+                logger.info("ブラウザが正常に初期化されました（シミュレーションモード）")
+                self.browser_initialized = True
                 return True
-                
-            async def dummy_type(selector, text):
-                logger.info(f"テキスト入力をシミュレート: {selector} -> {text}")
-                return True
-                
-            async def dummy_screenshot(path=None):
-                logger.info(f"スクリーンショットをシミュレート: {path}")
-                return path or f"screenshot_{int(time.time())}.png"
-                
-            async def dummy_evaluate(code):
-                logger.info(f"JavaScript実行をシミュレート: {code[:50]}...")
-                return None
-                
-            async def dummy_wait_for_navigation():
-                logger.info("ナビゲーション待機をシミュレート")
-                return True
-                
-            async def dummy_get_url():
-                logger.info("URL取得をシミュレート")
-                return "https://example.com"
-                
-            # ブラウザメソッドを設定
-            self.browser_methods = {
-                'navigate': dummy_navigate,
-                'click': dummy_click,
-                'type': dummy_type,
-                'screenshot': dummy_screenshot,
-                'evaluate': dummy_evaluate,
-                'wait_for_navigation': dummy_wait_for_navigation,
-                'get_url': dummy_get_url
-            }
             
-            logger.info("ブラウザが正常に初期化されました（シミュレーションモード）")
-            self.browser_initialized = True
-            return True
-            
-        except ImportError as e:
-            logger.error(f"webbrowserモジュールが見つかりませんでした: {e}")
-            return False
         except Exception as e:
             logger.error(f"ブラウザの初期化中にエラーが発生しました: {e}")
             import traceback

@@ -436,17 +436,84 @@ class MainWindow(QMainWindow):
         self.log("ブラウザを起動しています...")
         
         try:
-            # ブラウザを開く処理を実行
-            self.log("Googleを開きます...")
-            import webbrowser
+            # Google AI APIキーの確認
+            google_api_key = os.environ.get("GOOGLE_API_KEY")
+            if not google_api_key:
+                self.log("GOOGLE_API_KEY環境変数が設定されていません。APIなしモードで実行します。", logging.WARNING)
             
-            # デフォルトブラウザでGoogleを開く
-            success = webbrowser.open("https://www.google.com")
-            
-            if success:
-                self.log("デフォルトブラウザでGoogleを開きました。")
-            else:
-                self.log("ブラウザでのページ表示に失敗しました。", logging.WARNING)
+            # browser-useライブラリを使用
+            try:
+                import asyncio
+                import threading
+                from browser_use import BrowserManager
+                
+                def run_browser():
+                    async def navigate():
+                        try:
+                            self.log("browser-useでブラウザを初期化中...")
+                            
+                            # BrowserManagerを初期化
+                            browser_manager = BrowserManager()
+                            browser = browser_manager.create_browser()
+                            
+                            # Google AIを使用する場合
+                            if google_api_key:
+                                try:
+                                    from langchain_google_genai import ChatGoogleGenerativeAI
+                                    from browser_use import setup_agent
+                                    
+                                    # Google Geminiモデルを初期化
+                                    self.log("Google Gemini AIモデルを初期化しています...")
+                                    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+                                    
+                                    # エージェントをセットアップ
+                                    agent = setup_agent(
+                                        browser=browser,
+                                        llm=llm,
+                                        task="Webブラウザを操作して指示に従います"
+                                    )
+                                    self.log("AIエージェントを使用したブラウザ操作が準備できました")
+                                except Exception as e:
+                                    self.log(f"AIエージェントの初期化に失敗しました: {e}", logging.ERROR)
+                                    self.log("AIなしでブラウザ操作を続行します")
+                            
+                            # Googleホームページに移動
+                            self.log("Googleホームページを開きます...")
+                            await browser.goto("https://www.google.com")
+                            self.log("ブラウザが正常に初期化されました。")
+                            
+                            # ブラウザを開いたままにする
+                            await asyncio.sleep(3600)  # 1時間待機（ブラウザを開いたままにする）
+                            
+                        except Exception as e:
+                            self.log(f"ブラウザ起動エラー: {e}", logging.ERROR)
+                            import traceback
+                            self.log(traceback.format_exc(), logging.ERROR)
+                    
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(navigate())
+                    except Exception as e:
+                        self.log(f"ブラウザ実行エラー: {e}", logging.ERROR)
+                
+                # 別スレッドでブラウザを起動
+                thread = threading.Thread(target=run_browser)
+                thread.daemon = True
+                thread.start()
+                self.log("ブラウザ起動スレッドを開始しました。")
+                
+            except ImportError:
+                self.log("browser-useライブラリが見つかりません。標準のブラウザを使用します。", logging.WARNING)
+                import webbrowser
+                
+                # デフォルトブラウザでGoogleを開く
+                success = webbrowser.open("https://www.google.com")
+                
+                if success:
+                    self.log("デフォルトブラウザでGoogleを開きました。")
+                else:
+                    self.log("ブラウザでのページ表示に失敗しました。", logging.WARNING)
                 
         except Exception as e:
             self.log(f"ブラウザの起動中にエラーが発生しました: {e}", logging.ERROR)
