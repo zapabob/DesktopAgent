@@ -436,20 +436,18 @@ class MainWindow(QMainWindow):
         self.log("ブラウザを起動しています...")
         
         try:
-            # Google AI APIキーの確認
-            google_api_key = os.environ.get("GOOGLE_API_KEY")
-            if not google_api_key:
-                self.log("GOOGLE_API_KEY環境変数が設定されていません。APIキーをセットしてください。", logging.WARNING)
-            
-            # プレイグラウンドモードの使用
-            self.log("ブラウザを直接起動します...")
+            # ブラウザを開く処理を実行
+            self.log("Googleを開きます...")
             import webbrowser
-            webbrowser.open("https://www.google.com")
-            self.log("デフォルトブラウザでGoogleを開きました。")
             
-        except ImportError as e:
-            self.log(f"モジュールの読み込みに問題があります: {e}", logging.ERROR)
-            self.log("pip install webbrowserでインストールしてください。", logging.INFO)
+            # デフォルトブラウザでGoogleを開く
+            success = webbrowser.open("https://www.google.com")
+            
+            if success:
+                self.log("デフォルトブラウザでGoogleを開きました。")
+            else:
+                self.log("ブラウザでのページ表示に失敗しました。", logging.WARNING)
+                
         except Exception as e:
             self.log(f"ブラウザの起動中にエラーが発生しました: {e}", logging.ERROR)
             import traceback
