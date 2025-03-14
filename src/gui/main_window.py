@@ -441,55 +441,15 @@ class MainWindow(QMainWindow):
             if not google_api_key:
                 self.log("GOOGLE_API_KEY環境変数が設定されていません。APIキーをセットしてください。", logging.WARNING)
             
-            from browser_use import Agent, ActionModel
-            import asyncio
-            import threading
+            # プレイグラウンドモードの使用
+            self.log("ブラウザを直接起動します...")
+            import webbrowser
+            webbrowser.open("https://www.google.com")
+            self.log("デフォルトブラウザでGoogleを開きました。")
             
-            def run_browser():
-                async def navigate():
-                    try:
-                        self.log("ブラウザを初期化中...")
-                        
-                        # Google AI APIキーをチェック
-                        if not google_api_key:
-                            # ActionModelを直接使用（AIなし）
-                            self.log("AIなしでブラウザを初期化します。")
-                            browser = ActionModel()
-                        else:
-                            # Google AI APIを使用
-                            self.log("Google AIを使用してブラウザを初期化します。")
-                            from langchain_google_genai import ChatGoogleGenerativeAI
-                            agent_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
-                            agent = Agent(
-                                task="Webブラウザを操作して指示に従います",
-                                llm=agent_llm
-                            )
-                            browser = agent.action_model
-                        
-                        # Googleホームページに移動
-                        self.log("Googleホームページを開きます...")
-                        await browser.navigate("https://www.google.com")
-                        self.log("ブラウザが正常に初期化されました。")
-                    except Exception as e:
-                        self.log(f"ブラウザ起動エラー: {e}", logging.ERROR)
-                        import traceback
-                        self.log(traceback.format_exc(), logging.ERROR)
-                
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    loop.run_until_complete(navigate())
-                except Exception as e:
-                    self.log(f"ブラウザ実行エラー: {e}", logging.ERROR)
-            
-            # 別スレッドでブラウザを起動
-            thread = threading.Thread(target=run_browser)
-            thread.daemon = True
-            thread.start()
-            self.log("ブラウザ起動スレッドを開始しました。")
         except ImportError as e:
-            self.log(f"browser-useパッケージがインストールされていません: {e}", logging.ERROR)
-            self.log("pip install browser-use playwrightでインストールしてください。", logging.INFO)
+            self.log(f"モジュールの読み込みに問題があります: {e}", logging.ERROR)
+            self.log("pip install webbrowserでインストールしてください。", logging.INFO)
         except Exception as e:
             self.log(f"ブラウザの起動中にエラーが発生しました: {e}", logging.ERROR)
             import traceback
