@@ -537,27 +537,16 @@ class CommandInterpreter:
                 else:
                     return False, f"無効なURL: {url}"
             
-            # ブラウザが初期化されていない場合は初期化
-            if not self.browser_initialized:
-                self.initialize_browser()
-                if not self.browser_initialized:
-                    return False, "ブラウザの初期化に失敗しました。"
-            
-            # URLに移動
-            if self.use_mcp and self.mcp_adapter:
-                result = self.mcp_adapter.run_async(self.mcp_adapter.navigate(url))
-                if result.get("status") == "success":
-                    return True, f"{url} を開きました。"
-                else:
-                    return False, f"ナビゲーションに失敗しました: {result.get('message', '不明なエラー')}"
-            elif 'navigate' in self.browser_methods and self.browser_methods['navigate']:
-                self._run_browser_async(self.browser_methods['navigate'](url))
-                return True, f"{url} を開きました。"
-            else:
-                return False, "ブラウザのナビゲーション機能が利用できません。"
+            # 標準のwebbrowserモジュールを使用
+            logger.info(f"URLを開きます: {url}")
+            import webbrowser
+            webbrowser.open(url)
+            return True, f"{url} を開きました。"
                 
         except Exception as e:
             logger.error(f"ナビゲーションエラー: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False, f"エラー: {str(e)}"
             
     def _search_google(self, match, command) -> Tuple[bool, str]:
@@ -716,27 +705,25 @@ class CommandInterpreter:
                 raise
         
         try:
-            # 現在のスレッドがメインスレッドでない場合、新しいイベントループを作成
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                # "There is no current event loop in thread"
-                def run_async():
-                    nonlocal result
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(run_and_return())
+            # スレッドセーフに非同期処理を実行
+            def run_async():
+                nonlocal result
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    result = loop.run_until_complete(run_and_return())
+                except Exception as e:
+                    logger.error(f"非同期実行エラー: {e}")
+                finally:
                     loop.close()
-                
-                run_async()
-                return result
             
-            # メインスレッドの場合は直接実行
-            return loop.run_until_complete(run_and_return())
+            # 常に新しいループを作成して実行
+            run_async()
+            return result
             
         except Exception as e:
             logger.error(f"ブラウザ操作の実行に失敗しました: {e}")
-            raise
+            return None
     
     def close_browser(self):
         """

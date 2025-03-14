@@ -477,13 +477,16 @@ class MainWindow(QMainWindow):
     def _execute_command_thread(self, command):
         """別スレッドでコマンドを実行"""
         try:
+            self.log(f"コマンド '{command}' を実行中...")
             success = self.command_interpreter.execute_command(command)
             if success:
                 self.log("コマンドを実行しました")
             else:
                 self.log("コマンドの実行に失敗しました")
         except Exception as e:
-            self.log(f"コマンド実行エラー: {str(e)}")
+            self.log(f"コマンド実行エラー: {str(e)}", logging.ERROR)
+            import traceback
+            self.log(traceback.format_exc(), logging.ERROR)
 
     def log(self, message, level=logging.INFO):
         """ログを表示"""
