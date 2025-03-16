@@ -448,7 +448,7 @@ class MainWindow(QMainWindow):
                 from browser_use import BrowserManager
                 
                 def run_browser():
-                    async def navigate():
+                    async def open_browser():
                         try:
                             self.log("browser-useでブラウザを初期化中...")
                             
@@ -493,7 +493,7 @@ class MainWindow(QMainWindow):
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
-                        loop.run_until_complete(navigate())
+                        loop.run_until_complete(open_browser())
                     except Exception as e:
                         self.log(f"ブラウザ実行エラー: {e}", logging.ERROR)
                 

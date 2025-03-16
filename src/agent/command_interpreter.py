@@ -13,6 +13,8 @@ import asyncio
 import platform
 import urllib.parse
 from pathlib import Path
+from dotenv import load_dotenv
+from langchain_core.language_models import BaseLanguageModel
 
 # ブラウザ関連の依存関係を安全にインポート
 try:
@@ -515,6 +517,15 @@ class CommandInterpreter:
                 (re.compile(r"YouTube[でに](.+?)を検索", re.IGNORECASE), self._search_youtube),
                 (re.compile(r"Gmail.*開[いくけ]", re.IGNORECASE), lambda m, c: self._navigate_url(m, "https://mail.google.com")),
                 (re.compile(r"カレンダー.*開[いくけ]", re.IGNORECASE), lambda m, c: self._navigate_url(m, "https://calendar.google.com")),
+                # 新しいパターンを追加
+                (re.compile(r"YouTube.*開[いくけ]", re.IGNORECASE), lambda m, c: self._navigate_url(m, "https://www.youtube.com")),
+                (re.compile(r"Google.*開[いくけ]", re.IGNORECASE), lambda m, c: self._navigate_url(m, "https://www.google.com")),
+                (re.compile(r"Twitter.*開[いくけ]", re.IGNORECASE), lambda m, c: self._navigate_url(m, "https://twitter.com")),
+                (re.compile(r"Facebook.*開[いくけ]", re.IGNORECASE), lambda m, c: self._navigate_url(m, "https://www.facebook.com")),
+                (re.compile(r"Amazon.*開[いくけ]", re.IGNORECASE), lambda m, c: self._navigate_url(m, "https://www.amazon.co.jp")),
+                (re.compile(r"Yahoo.*開[いくけ]", re.IGNORECASE), lambda m, c: self._navigate_url(m, "https://www.yahoo.co.jp")),
+                # 一般的なウェブサイトを開くためのパターン
+                (re.compile(r"(.+?)を開[いくけ]", re.IGNORECASE), self._navigate_url),
             ]
             
             # ブラウザコマンドの検出と実行
