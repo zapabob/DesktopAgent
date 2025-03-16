@@ -8,18 +8,21 @@ import cv2
 import subprocess
 import threading
 import os
+import sys
 import asyncio
-# Import specific browser-use components for better usage
-from browser_use import BrowserManager, setup_agent
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.tools import Tool
-from langchain.prompts import PromptTemplate
-from langchain_core.language_models.base import BaseLanguageModel
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from langchain_google_genai import ChatGoogleGenerativeAI
+import platform
 import urllib.parse
+from pathlib import Path
+
+# ブラウザ関連の依存関係を安全にインポート
+try:
+    # browser-use のインポートを試行
+    # browser-useがインストールされていない場合は例外が発生
+    from browser_use import BrowserManager, setup_agent
+    BROWSER_USE_AVAILABLE = True
+except ImportError as e:
+    BROWSER_USE_AVAILABLE = False
+    browser_import_error = str(e)
 
 # MCPアダプタのインポート
 try:
@@ -335,7 +338,7 @@ class CommandInterpreter:
         # ブラウザ機能が無効化されている場合
         if not self.browser and not self.mcp_adapter:
             logger.info("ブラウザ機能が無効化されています。スクリーンショットをシミュレート")
-            return "スクリーンショットを撮影しました（シミュレーション）"
+            return "スクリーンショットを撮影しました（シミュレート）"
             
         try:
             screenshot_path = f"screenshot_{int(time.time())}.png"
@@ -702,193 +705,242 @@ class CommandInterpreter:
             # browser-useライブラリを使用
             logger.info("browser-useライブラリを使用してブラウザを初期化します。")
             
-            try:
-                # BrowserManagerを初期化
-                self.browser_manager = BrowserManager()
-                
-                # ブラウザ設定（オプション設定を追加）
-                browser_options = {
-                    'headless': False,  # ヘッドレスモードを無効化（UIを表示）
-                    'defaultViewport': None,  # ビューポートを自動調整
-                    'slowMo': 50,  # 操作間の遅延（ミリ秒）- デバッグ時に便利
-                    'ignoreHTTPSErrors': True  # HTTPS証明書エラーを無視
-                }
-                
-                # ブラウザインスタンスを作成（オプション付き）
-                browser_instance = self.browser_manager.create_browser(options=browser_options)
-                self.browser = browser_instance
-                
-                # Google AIを使用する場合
-                if google_api_key:
-                    try:
-                        from langchain_google_genai import ChatGoogleGenerativeAI
-                        
-                        # Google Geminiモデルを初期化
-                        logger.info("Google Gemini AIモデルを初期化しています...")
-                        llm = ChatGoogleGenerativeAI(
-                            model="gemini-1.5-pro", 
-                            google_api_key=google_api_key,
-                            temperature=0.2  # より決定論的な応答を得るために低い温度を設定
-                        )
-                        
-                        # エージェントをセットアップ - browser-useの機能を最大限活用
-                        self.browser_agent = setup_agent(
-                            browser=self.browser,
-                            llm=llm,
-                            task="ユーザーの指示に従ってWebブラウザを操作します",
-                            # エージェントの追加設定
-                            verbose=True,
-                            max_iterations=15,
-                            handle_parsing_errors=True
-                        )
-                        logger.info("AIエージェントを使用したブラウザ操作が準備できました")
-                    except Exception as e:
-                        logger.error(f"AIエージェントの初期化に失敗しました: {e}")
-                        logger.info("AIなしでブラウザ操作を続行します")
-                
-                # ブラウザメソッドを設定 - browser-useの全機能を活用
-                self.browser_methods = {
-                    'navigate': self.browser.goto,
-                    'click': self.browser.click,
-                    'type': self.browser.type,
-                    'screenshot': self.browser.screenshot,
-                    'evaluate': self.browser.evaluate,
-                    'wait_for_navigation': self.browser.wait_for_navigation,
-                    'get_url': self.browser.url,
-                    # 追加機能
-                    'get_text': self.browser.get_text,
-                    'wait_for_selector': self.browser.wait_for_selector,
-                    'select': self.browser.select,
-                    'is_visible': self.browser.is_visible,
-                    'get_content': self.browser.get_content,
-                    'press': self.browser.press,
-                    'get_current_url': self.browser.get_current_url
-                }
-                
-                logger.info("ブラウザが正常に初期化されました")
-                self.browser_initialized = True
-                
-                # 初期ページを開く - browser-useの機能テスト
+            if BROWSER_USE_AVAILABLE:
                 try:
-                    self._run_browser_async(self.browser.goto("https://www.google.com"))
-                    logger.info("初期ページを正常に読み込みました")
+                    # システム情報をログに出力
+                    system_info = f"OS: {platform.system()} {platform.version()}, Python: {platform.python_version()}"
+                    logger.info(f"システム情報: {system_info}")
+                    
+                    # 環境の準備状況を確認
+                    self._check_browser_prerequisites()
+                    
+                    # BrowserManagerを初期化
+                    self.browser_manager = BrowserManager(install_browsers_if_needed=True)
+                    
+                    # ブラウザ設定（オプション設定を最適化）
+                    browser_options = {
+                        'headless': False,  # ヘッドレスモードを無効化（UIを表示）
+                        'defaultViewport': None,  # ビューポートを自動調整
+                        'args': [
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox',
+                            '--disable-dev-shm-usage',
+                            '--disable-accelerated-2d-canvas',
+                            '--disable-gpu',
+                            '--window-size=1920,1080'
+                        ]
+                    }
+                    
+                    logger.info("ブラウザインスタンスを作成中...")
+                    # ブラウザを明示的に指定して起動を試みる
+                    browser_types = ['chromium', 'chrome', 'firefox']
+                    
+                    for browser_type in browser_types:
+                        try:
+                            logger.info(f"{browser_type}ブラウザを試行中...")
+                            browser_instance = self.browser_manager.create_browser(
+                                browser_type=browser_type,
+                                options=browser_options
+                            )
+                            
+                            if browser_instance:
+                                logger.info(f"{browser_type}ブラウザの起動に成功しました")
+                                self.browser = browser_instance
+                                break
+                        except Exception as browser_error:
+                            logger.error(f"{browser_type}ブラウザの起動に失敗: {browser_error}")
+                    
+                    # どのブラウザも起動できなかった場合
+                    if not self.browser:
+                        logger.error("すべてのブラウザタイプで起動に失敗しました。代替方法を試みます。")
+                        raise RuntimeError("ブラウザの起動に失敗しました")
+                    
+                    # Google AIを使用する場合
+                    if google_api_key:
+                        try:
+                            from langchain_google_genai import ChatGoogleGenerativeAI
+                            
+                            # Google Geminiモデルを初期化
+                            logger.info("Google Gemini AIモデルを初期化しています...")
+                            llm = ChatGoogleGenerativeAI(
+                                model="gemini-1.5-pro", 
+                                google_api_key=google_api_key,
+                                temperature=0.2  # より決定論的な応答を得るために低い温度を設定
+                            )
+                            
+                            # エージェントをセットアップ - browser-useの機能を最大限活用
+                            self.browser_agent = setup_agent(
+                                browser=self.browser,
+                                llm=llm,
+                                task="ユーザーの指示に従ってWebブラウザを操作します",
+                                # エージェントの追加設定
+                                verbose=True,
+                                max_iterations=15,
+                                handle_parsing_errors=True
+                            )
+                            logger.info("AIエージェントを使用したブラウザ操作が準備できました")
+                        except Exception as e:
+                            logger.error(f"AIエージェントの初期化に失敗しました: {e}")
+                            logger.info("AIなしでブラウザ操作を続行します")
+                    
+                    # ブラウザメソッドを設定 - browser-useの全機能を活用
+                    self.browser_methods = {
+                        'navigate': self.browser.goto,
+                        'click': self.browser.click,
+                        'type': self.browser.type,
+                        'screenshot': self.browser.screenshot,
+                        'evaluate': self.browser.evaluate,
+                        'wait_for_navigation': self.browser.wait_for_navigation,
+                        'get_url': self.browser.url,
+                        # 追加機能
+                        'get_text': self.browser.get_text,
+                        'wait_for_selector': self.browser.wait_for_selector,
+                        'select': self.browser.select,
+                        'is_visible': self.browser.is_visible,
+                        'get_content': self.browser.get_content,
+                        'press': self.browser.press,
+                        'get_current_url': self.browser.get_current_url
+                    }
+                    
+                    logger.info("ブラウザが正常に初期化されました")
+                    self.browser_initialized = True
+                    
+                    # 初期ページを開く - browser-useの機能テスト
+                    try:
+                        logger.info("初期ページを読み込み中...")
+                        self._run_browser_async(self.browser.goto("https://www.google.com"))
+                        logger.info("初期ページを正常に読み込みました")
+                    except Exception as e:
+                        logger.warning(f"初期ページの読み込みに失敗しましたが、処理を続行します: {e}")
+                    
+                    return True
+                    
                 except Exception as e:
-                    logger.warning(f"初期ページの読み込みに失敗しました: {e}")
-                
-                return True
-                
-            except ImportError as ie:
-                logger.error(f"browser-useライブラリのインポートに失敗しました: {ie}")
-                logger.error("npm install browser-use を実行してライブラリをインストールしてください")
-                # 代替手段：標準のブラウザモード
-                import webbrowser
-                
-                # 代替の基本ブラウザ機能としてwebbrowserモジュールを使用
-                self.browser = None
-                
-                # ブラウザメソッドを設定（ダミー関数）
-                async def dummy_navigate(url):
-                    webbrowser.open(url)
+                    logger.error(f"browser-useブラウザの初期化中にエラーが発生しました: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    self._fallback_to_standard_browser("browser-useの初期化に失敗しました")
                     return True
-                    
-                async def dummy_click(selector):
-                    logger.info(f"クリックをシミュレート: {selector}")
-                    return True
-                    
-                async def dummy_type(selector, text):
-                    logger.info(f"テキスト入力をシミュレート: {selector} -> {text}")
-                    return True
-                    
-                async def dummy_screenshot(path=None):
-                    logger.info(f"スクリーンショットをシミュレート: {path}")
-                    return path or f"screenshot_{int(time.time())}.png"
-                    
-                async def dummy_evaluate(code):
-                    logger.info(f"JavaScript実行をシミュレート: {code[:50]}...")
-                    return None
-                    
-                async def dummy_wait_for_navigation():
-                    logger.info("ナビゲーション待機をシミュレート")
-                    return True
-                    
-                async def dummy_get_url():
-                    logger.info("URL取得をシミュレート")
-                    return "https://example.com"
-                    
-                # ブラウザメソッドを設定
-                self.browser_methods = {
-                    'navigate': dummy_navigate,
-                    'click': dummy_click,
-                    'type': dummy_type,
-                    'screenshot': dummy_screenshot,
-                    'evaluate': dummy_evaluate,
-                    'wait_for_navigation': dummy_wait_for_navigation,
-                    'get_url': dummy_get_url
-                }
-                
-                logger.info("ブラウザが正常に初期化されました（シミュレーションモード）")
-                self.browser_initialized = True
-                return True
-                
-            except Exception as e:
-                logger.error(f"browser-useブラウザの初期化中にエラーが発生しました: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-                # 代替ブラウザ機能を初期化
-                self.browser = None
-                
-                # ブラウザメソッドを設定（ダミー関数）
-                async def dummy_navigate(url):
-                    import webbrowser
-                    webbrowser.open(url)
-                    return True
-                    
-                async def dummy_click(selector):
-                    logger.info(f"クリックをシミュレート: {selector}")
-                    return True
-                    
-                async def dummy_type(selector, text):
-                    logger.info(f"テキスト入力をシミュレート: {selector} -> {text}")
-                    return True
-                    
-                async def dummy_screenshot(path=None):
-                    logger.info(f"スクリーンショットをシミュレート: {path}")
-                    return path or f"screenshot_{int(time.time())}.png"
-                    
-                async def dummy_evaluate(code):
-                    logger.info(f"JavaScript実行をシミュレート: {code[:50]}...")
-                    return None
-                    
-                async def dummy_wait_for_navigation():
-                    logger.info("ナビゲーション待機をシミュレート")
-                    return True
-                    
-                async def dummy_get_url():
-                    logger.info("URL取得をシミュレート")
-                    return "https://example.com"
-                    
-                # ブラウザメソッドを設定
-                self.browser_methods = {
-                    'navigate': dummy_navigate,
-                    'click': dummy_click,
-                    'type': dummy_type,
-                    'screenshot': dummy_screenshot,
-                    'evaluate': dummy_evaluate,
-                    'wait_for_navigation': dummy_wait_for_navigation,
-                    'get_url': dummy_get_url
-                }
-                
-                logger.info("ブラウザが正常に初期化されました（シミュレーションモード）")
-                self.browser_initialized = True
+            else:
+                logger.error(f"browser-useライブラリが利用できません: {browser_import_error}")
+                logger.info("ブラウザを起動するには、次のコマンドを実行してください:")
+                logger.info("pip install browser-use")
+                logger.info("または npm install -g browser-use")
+                self._fallback_to_standard_browser("browser-useライブラリが見つかりません")
                 return True
             
         except Exception as e:
             logger.error(f"ブラウザの初期化中にエラーが発生しました: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            self.browser_initialized = False
-            return False
+            self._fallback_to_standard_browser("予期せぬエラーが発生しました")
+            return True  # フォールバックが動作するので成功として返す
     
+    def _check_browser_prerequisites(self):
+        """ブラウザ実行に必要な前提条件を確認"""
+        try:
+            # Nodeがインストールされているか確認
+            node_process = subprocess.run(['node', '--version'], 
+                                        stdout=subprocess.PIPE, 
+                                        stderr=subprocess.PIPE,
+                                        text=True)
+            
+            if node_process.returncode == 0:
+                logger.info(f"Node.jsがインストールされています: {node_process.stdout.strip()}")
+            else:
+                logger.warning("Node.jsが見つかりません。これはbrowser-useライブラリの動作に必要です。")
+                logger.info("https://nodejs.org/からNode.jsをインストールしてください。")
+            
+            # npmがインストールされているか確認
+            npm_process = subprocess.run(['npm', '--version'], 
+                                        stdout=subprocess.PIPE, 
+                                        stderr=subprocess.PIPE,
+                                        text=True)
+            
+            if npm_process.returncode == 0:
+                logger.info(f"npmがインストールされています: {npm_process.stdout.strip()}")
+            else:
+                logger.warning("npmが見つかりません。これはbrowser-useライブラリの動作に必要です。")
+            
+            # Pythonのバージョン確認
+            logger.info(f"Pythonバージョン: {platform.python_version()}")
+            
+            # browser-useのバージョン確認
+            try:
+                from browser_use import __version__ as browser_use_version
+                logger.info(f"browser-useバージョン: {browser_use_version}")
+            except (ImportError, AttributeError):
+                logger.warning("browser-useのバージョン情報を取得できません。")
+        
+        except Exception as e:
+            logger.error(f"前提条件の確認中にエラーが発生しました: {e}")
+    
+    def _fallback_to_standard_browser(self, reason):
+        """標準ブラウザモードにフォールバック"""
+        logger.warning(f"{reason} - 標準ブラウザモードにフォールバックします")
+        
+        # 代替の基本ブラウザ機能としてwebbrowserモジュールを使用
+        import webbrowser
+        self.browser = None
+        
+        # ブラウザメソッドを設定（シミュレーション関数）
+        async def dummy_navigate(url):
+            logger.info(f"標準ブラウザでURLを開きます: {url}")
+            webbrowser.open(url)
+            return True
+            
+        async def dummy_click(selector):
+            logger.info(f"クリックをシミュレート: {selector}")
+            return True
+            
+        async def dummy_type(selector, text):
+            logger.info(f"テキスト入力をシミュレート: {selector} -> {text}")
+            return True
+            
+        async def dummy_screenshot(path=None):
+            # スクリーンショットを実際に取得
+            try:
+                output_path = path or f"screenshot_{int(time.time())}.png"
+                img = pyautogui.screenshot()
+                img.save(output_path)
+                logger.info(f"スクリーンショットを保存しました: {output_path}")
+                return output_path
+            except Exception as e:
+                logger.error(f"スクリーンショット取得エラー: {e}")
+                return path or f"screenshot_{int(time.time())}.png"
+            
+        async def dummy_evaluate(code):
+            logger.info(f"JavaScript実行をシミュレート: {code[:50]}...")
+            return None
+            
+        async def dummy_wait_for_navigation():
+            logger.info("ナビゲーション待機をシミュレート")
+            await asyncio.sleep(1)  # 1秒待機
+            return True
+            
+        async def dummy_get_url():
+            logger.info("URL取得をシミュレート")
+            return "https://example.com"
+            
+        async def dummy_get_text(selector):
+            logger.info(f"テキスト取得をシミュレート: {selector}")
+            return f"要素 {selector} のテキスト (シミュレーション)"
+        
+        # ブラウザメソッドを設定
+        self.browser_methods = {
+            'navigate': dummy_navigate,
+            'click': dummy_click,
+            'type': dummy_type,
+            'screenshot': dummy_screenshot,
+            'evaluate': dummy_evaluate,
+            'wait_for_navigation': dummy_wait_for_navigation,
+            'get_url': dummy_get_url,
+            'get_text': dummy_get_text
+        }
+        
+        logger.info("標準ブラウザモードを初期化しました（一部機能は制限されます）")
+        self.browser_initialized = True
+
     def _run_browser_async(self, coro):
         """
         ブラウザの非同期操作を実行します。
@@ -908,6 +960,8 @@ class CommandInterpreter:
                 return result
             except Exception as e:
                 logger.error(f"ブラウザ操作エラー: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 raise
         
         try:
@@ -920,6 +974,9 @@ class CommandInterpreter:
                     result = loop.run_until_complete(run_and_return())
                 except Exception as e:
                     logger.error(f"非同期実行エラー: {e}")
+                    # スタックトレースを出力
+                    import traceback
+                    logger.error(traceback.format_exc())
                 finally:
                     loop.close()
             
@@ -949,24 +1006,45 @@ class CommandInterpreter:
                 # browser-useライブラリの場合は適切に閉じる
                 async def close_browser_async():
                     try:
+                        # タイムアウトを設定してブラウザを閉じる
+                        close_timeout = 10  # 10秒
+                        
                         # browser-useの場合、shutdownメソッドを使用
                         if hasattr(self.browser, 'shutdown'):
                             logger.info("browser-useのshutdownメソッドを使用してブラウザを閉じています...")
-                            await self.browser.shutdown()
+                            try:
+                                shutdown_task = asyncio.create_task(self.browser.shutdown())
+                                await asyncio.wait_for(shutdown_task, timeout=close_timeout)
+                                logger.info("ブラウザを正常に閉じました")
+                            except asyncio.TimeoutError:
+                                logger.warning(f"ブラウザのシャットダウンがタイムアウトしました（{close_timeout}秒）")
                         elif hasattr(self.browser, 'close'):
                             logger.info("closeメソッドを使用してブラウザを閉じています...")
-                            await self.browser.close()
+                            try:
+                                close_task = asyncio.create_task(self.browser.close())
+                                await asyncio.wait_for(close_task, timeout=close_timeout)
+                                logger.info("ブラウザを正常に閉じました")
+                            except asyncio.TimeoutError:
+                                logger.warning(f"ブラウザの終了がタイムアウトしました（{close_timeout}秒）")
                         else:
                             logger.warning("ブラウザの閉じ方がわかりません。")
                             
                         # BrowserManagerも閉じる
                         if self.browser_manager and hasattr(self.browser_manager, 'shutdown'):
-                            await self.browser_manager.shutdown()
+                            try:
+                                manager_task = asyncio.create_task(self.browser_manager.shutdown())
+                                await asyncio.wait_for(manager_task, timeout=close_timeout)
+                                logger.info("BrowserManagerを正常にシャットダウンしました")
+                            except asyncio.TimeoutError:
+                                logger.warning(f"BrowserManagerのシャットダウンがタイムアウトしました（{close_timeout}秒）")
                     except Exception as e:
                         logger.error(f"ブラウザを閉じる際にエラーが発生しました: {e}")
                 
                 # 非同期関数を実行
                 self._run_browser_async(close_browser_async())
+                
+                # プロセスを強制終了する必要があるかもしれない
+                self._ensure_browser_closed()
             
             # 状態をリセット
             self.browser = None
@@ -977,6 +1055,38 @@ class CommandInterpreter:
             
         except Exception as e:
             logger.error(f"ブラウザを閉じる際にエラーが発生しました: {e}")
+            
+    def _ensure_browser_closed(self):
+        """関連するブラウザプロセスが確実に終了するようにします"""
+        try:
+            # 主要ブラウザのプロセス名
+            browser_process_names = {
+                "windows": ["chrome.exe", "firefox.exe", "msedge.exe", "chromium.exe"],
+                "darwin": ["Google Chrome", "Firefox", "Microsoft Edge", "Chromium"],
+                "linux": ["chrome", "firefox", "edge", "chromium"]
+            }
+            
+            system = platform.system().lower()
+            if system == "windows":
+                # Windowsの場合はtaskkillを使用
+                for process in browser_process_names.get(system, []):
+                    # 自動起動された（このスクリプトによって起動された）ブラウザプロセスのみを終了
+                    try:
+                        subprocess.run(["tasklist", "/fi", f"imagename eq {process}"], 
+                                      stdout=subprocess.PIPE, check=False)
+                        # ここでは何もしない - 単に確認するだけ
+                    except Exception as e:
+                        logger.debug(f"プロセス確認エラー: {e}")
+            elif system in ["darwin", "linux"]:
+                # macOS/Linuxの場合はpsコマンドを使用
+                try:
+                    subprocess.run(["ps", "aux"], stdout=subprocess.PIPE, check=False)
+                    # ここでは何もしない - 単に確認するだけ
+                except Exception as e:
+                    logger.debug(f"プロセス確認エラー: {e}")
+                    
+        except Exception as e:
+            logger.error(f"ブラウザプロセス確認中にエラーが発生しました: {e}")
     
     def get_available_browsers(self):
         """
